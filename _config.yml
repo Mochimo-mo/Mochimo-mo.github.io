@@ -8,7 +8,7 @@
 
 # Basic Site Settings
 locale                   : "en-US"
-title                    : "Your Name / Site Title"
+title                    : "Qiuting Qian"
 title_separator          : "-"
 name                     : &name "Your Name"
 description              : &description "personal description"
@@ -22,9 +22,9 @@ repository               : "academicpages/academicpages.github.io"
 author:
   # Biographic information
   avatar           : "profile.png"
-  name             : "Qiuting Qian 钱秋婷"
+  name             : "钱秋婷"
   pronouns         : # example: "she/her"  
-  bio              : "不必成为别人，只需做自己。"
+  bio              : 
   location         : "Earth"
   employer         : "University of Glasgow"
   uri              : # URL
