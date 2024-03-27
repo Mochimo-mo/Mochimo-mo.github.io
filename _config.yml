@@ -12,7 +12,7 @@ title                    : "Your Name / Site Title"
 title_separator          : "-"
 name                     : &name "Your Name"
 description              : &description "personal description"
-url                      : https://academicpages.github.io # the base hostname & protocol for your site e.g. "https://mmistakes.github.io"
+url                      : https://Mochimo-mo.github.io # the base hostname & protocol for your site e.g. "https://mmistakes.github.io"
 baseurl                  : "" # the subpath of your site, e.g. "/blog"
 repository               : "academicpages/academicpages.github.io"
 
@@ -22,13 +22,13 @@ repository               : "academicpages/academicpages.github.io"
 author:
   # Biographic information
   avatar           : "profile.png"
-  name             : "Your Sidebar Name"
+  name             : "Qiuting Qian 钱秋婷"
   pronouns         : # example: "she/her"  
-  bio              : "Short biography for the left-hand sidebar"
+  bio              : "不必成为别人，只需做自己。"
   location         : "Earth"
-  employer         : "Red Brick University"
+  employer         : "University of Glasgow"
   uri              : # URL
-  email            : "none@example.org" 
+  email            : "qiutingqian@hotmail.com" 
 
   # Academic websites
   arxiv            : # URL - Update with the correct link to your profile
