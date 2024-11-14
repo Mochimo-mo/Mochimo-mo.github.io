@@ -1,6 +1,6 @@
 ---
 layout: default
-title: Potato Hacker
+title: Mochimomo
 description: Test page
 ---
 # Lorem ipsum
