@@ -73,8 +73,13 @@
     lines.forEach((line,i)=>context.fillText(line,x,y+i*height));
   const downloadImage = (blob, name) => {
     const link=document.createElement("a");
-    link.href=URL.createObjectURL(blob);link.download=name;link.click();
-    setTimeout(()=>URL.revokeObjectURL(link.href),1000);
+    const url=URL.createObjectURL(blob);
+    link.href=url;link.download=name;
+    link.style.display="none";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),60000);
   };
   const shareOrDownload = async (blob, name, title, description) => {
     if(typeof File!=="undefined" && navigator.share && navigator.canShare) {
@@ -90,10 +95,18 @@
     return "downloaded";
   };
   const saveFeedback = outcome => ({
-    shared:"✓ 系统分享已完成，请在所选位置查看高清图文。",
-    downloaded:"✓ 高清图文已生成，下载已开始，请在下载内容查看。",
+    shared:"✓ 已保存图文图片。请在系统分享时选择的位置查看；选择“保存到照片”后可在相册查看。",
+    downloaded:"✓ 已保存图文图片到浏览器下载内容。若相册里没有，请从下载内容打开图片并存入相册。",
     cancelled:"已取消保存。"
   })[outcome];
+  const showSaveFeedback = (status, button, outcome) => {
+    const saved=outcome!=="cancelled";
+    if(status) {
+      status.classList.toggle("is-success",saved);
+      status.textContent=saveFeedback(outcome);
+    }
+    if(button) button.textContent=saved?"✓ 已保存 · 再次保存":"保存图文卡片";
+  };
   const copyText = async value => {
     try {await navigator.clipboard.writeText(value);return true;} catch {}
     const field=document.createElement("textarea");
@@ -353,7 +366,7 @@
     image.addEventListener("error", failed, {once:true});
     if (image.complete) image.naturalWidth ? loaded() : failed();
   }
-  function flash(message) {
+  function flash(message, duration=2600) {
     state.toast=message;
     const shell=app.querySelector(".app-shell");
     let toast=shell?.querySelector(".toast");
@@ -365,7 +378,7 @@
     }
     if(toast) toast.textContent=message;
     clearTimeout(toastTimer);
-    toastTimer=setTimeout(()=>{state.toast="";app.querySelector(".toast")?.remove();},2600);
+    toastTimer=setTimeout(()=>{state.toast="";app.querySelector(".toast")?.remove();},duration);
   }
   function navigate(view) {
     clearTimeout(shuffleTimer);
@@ -487,9 +500,10 @@
       const blob=await prepareCardImage(r,index);
       const outcome=await shareOrDownload(blob,`LUNA-${card.id}-${orientationAt(r,index)}-${dateKey()}.png`,
         `${card.cn} · LUNA`,cardReadingText(r,index,card));
-      if(status) {status.classList.toggle("is-success",outcome!=="cancelled");status.textContent=saveFeedback(outcome);}
+      showSaveFeedback(status,button,outcome);
     } catch {
-      if(status) status.textContent="清晰原图加载失败，保存未完成，请重试。";
+      if(status) {status.classList.remove("is-success");status.textContent="清晰原图加载失败，保存未完成，请重试。";}
+      if(button) button.textContent="重试保存图文卡片";
     } finally {
       if(button) button.disabled=false;
     }
@@ -580,10 +594,11 @@
     try {
       const blob=await prepareReadingImage(r);
       const outcome=await shareOrDownload(blob,`LUNA-reading-${dateKey()}.png`,"我的 LUNA 塔罗阅读",readingText(r,cards));
-      if(status) {status.classList.toggle("is-success",outcome!=="cancelled");status.textContent=saveFeedback(outcome);}
-      if(outcome!=="cancelled") flash("图文图片已准备完成。");
+      showSaveFeedback(status,button,outcome);
+      if(outcome!=="cancelled") flash("✓ 图文图片已保存",5000);
     } catch {
-      if(status) status.textContent="清晰原图加载失败，保存未完成，请重试。";
+      if(status) {status.classList.remove("is-success");status.textContent="清晰原图加载失败，保存未完成，请重试。";}
+      if(button) button.textContent="重试保存图文卡片";
     } finally {if(button) button.disabled=false;}
   }
   async function copyReading() {
