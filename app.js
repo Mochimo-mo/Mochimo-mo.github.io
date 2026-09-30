@@ -131,21 +131,33 @@
   </button>`;
   const intent = () => {
     const spread = SPREADS[state.mode];
+    const decision = state.mode==="decision";
     return shell(`<main class="journey">
       <button class="back-link" data-action="home">${arrow("left")} 返回首页</button>
       <section class="stage-center">
         <p class="eyebrow">${spread.eyebrow}</p>
-        <div class="intent-icon" aria-hidden="true">☾</div>
-        <h1>先想一想你的问题。</h1>
-        <p class="lead">${spread.intro}<br>不用寻找正确的那一张，凭第一感觉就好。</p>
-        <div class="question-field"><label for="question">写下此刻正在想的事 <span style="color:var(--blue)">（可选）</span></label>
-          <textarea id="question" maxlength="180" placeholder="例如：最近这件事为什么让我犹豫？">${esc(state.question)}</textarea>
+        <div class="intent-icon" aria-hidden="true">${decision?"⚖":"☾"}</div>
+        <h1>${decision?"先把决定说清楚。":"先想一想你的问题。"}</h1>
+        <p class="lead">${decision?"把正在面对的选择写成一句具体的话。可以是“要不要……”，也可以是两个选项之间的取舍。":`${spread.intro}<br>不用寻找正确的那一张，凭第一感觉就好。`}</p>
+        <div class="question-field"><label for="question">${decision?"这次要理清的决定":"写下此刻正在想的事"} <span style="color:var(--blue)">${decision?"（必填）":"（可选）"}</span></label>
+          <textarea id="question" maxlength="180" ${decision?'required aria-required="true"':''} placeholder="${decision?"例如：我要不要接受这份新工作？":"例如：最近这件事为什么让我犹豫？"}">${esc(state.question)}</textarea>
+          ${decision?'<p class="field-hint">聚焦一件正在考虑的事。下一步会让你确认这句话。</p>':""}
         </div>
-        <button class="primary" data-action="prepare">准备好了 ${arrow()}</button>
-        <p class="small-note">你写下的问题仅显示在本次阅读和当前浏览器的记录里，不会改变抽牌结果。</p>
+        <button class="primary" data-action="prepare">${decision?"查看我的决定":"准备好了"} ${arrow()}</button>
+        <p class="small-note">${decision?"你的决定仅显示在本次阅读和当前浏览器的记录里。":"你写下的问题仅显示在本次阅读和当前浏览器的记录里，不会改变抽牌结果。"}</p>
       </section>
     </main>`,true);
   };
+  const decisionReview = () => shell(`<main class="journey">
+    <button class="back-link" data-action="edit-decision">${arrow("left")} 修改决定</button>
+    <section class="stage-center decision-review">
+      <p class="eyebrow">BEFORE THE CARDS</p>
+      <h1>先看清这个决定。</h1>
+      <div class="decision-card"><span>这次要理清的决定</span><blockquote>“${esc(state.question.trim())}”</blockquote></div>
+      <p class="lead">接下来三张牌会分别照见你真正看重的、可能遗漏的，以及行动前的提醒。决定仍由你自己作出。</p>
+      <button class="primary" data-action="confirm-decision">围绕这个决定抽牌 ${arrow()}</button>
+    </section>
+  </main>`,true);
   const shuffle = () => {
     const spread = SPREADS[state.mode];
     return shell(`<main class="journey">
@@ -236,7 +248,7 @@
       :`<div class="empty-journal"><div class="glyph" aria-hidden="true">☾</div><h2>这里还没有记录。</h2><p>从一张牌开始，给今天的想法留个位置。</p><button class="primary" data-action="home">去抽一张牌 ${arrow()}</button></div>`}
     </main>`);
   };
-  const screens = {home,intent,shuffle,select,ready,reveal,result,journal};
+  const screens = {home,intent,"decision-review":decisionReview,shuffle,select,ready,reveal,result,journal};
   function render() {
     app.innerHTML = (screens[state.view]||home)();
     app.querySelectorAll(".face-art").forEach(image => watchArt(image));
@@ -441,7 +453,18 @@
     else if(action==="journal") navigate("journal");
     else if(action==="result-back") navigate(state.resultBack==="journal"?"journal":"home");
     else if(action==="mode") startMode(button.dataset.mode);
-    else if(action==="prepare") {state.question=app.querySelector("#question")?.value||"";state.view="shuffle";render();}
+    else if(action==="prepare") {
+      state.question=(app.querySelector("#question")?.value||"").trim();
+      if(state.mode==="decision" && !state.question) {
+        flash("请先写下这次要理清的决定。");
+        app.querySelector("#question")?.focus();
+        return;
+      }
+      state.view=state.mode==="decision"?"decision-review":"shuffle";
+      render();
+    }
+    else if(action==="edit-decision") {state.view="intent";render();app.querySelector("#question")?.focus();}
+    else if(action==="confirm-decision") {state.view="shuffle";render();}
     else if(action==="shuffle-run"&&!state.shuffling) {
       state.shuffling=true;render();
       shuffleTimer=setTimeout(()=>{state.shuffling=false;state.view="select";render()},window.matchMedia("(prefers-reduced-motion: reduce)").matches?80:2400);
@@ -529,7 +552,8 @@
       inputSchema:{type:"object",properties:{positions:{type:"array",items:{type:"integer",minimum:0,maximum:17},minItems:1,maxItems:3}},required:["positions"],additionalProperties:false},
       annotations:{readOnlyHint:false,untrustedContentHint:false},
       execute(input) {
-        if(!state.mode||!["intent","shuffle","select"].includes(state.view)) throw new Error("Start a reading first.");
+        if(!state.mode||!["intent","decision-review","shuffle","select"].includes(state.view)) throw new Error("Start a reading first.");
+        if(state.mode==="decision"&&!state.question.trim()) throw new Error("Write down a clear decision before choosing cards.");
         const positions=input?.positions;
         if(!Array.isArray(positions)||positions.length!==SPREADS[state.mode].count||new Set(positions).size!==positions.length||positions.some(i=>!Number.isInteger(i)||i<0||i>17)) throw new Error("Provide distinct visible positions for this spread.");
         clearTimeout(shuffleTimer);state.shuffling=false;state.view="select";render();
