@@ -2,12 +2,16 @@
   const app = document.getElementById("app");
   const RECORDS_KEY = "luna-readings-v1";
   const DAILY_KEY = "luna-daily-v1";
+  const AI_SETTINGS_KEY = "luna-ai-settings-v1";
+  const API_KEY_STORE = "luna-user-api-key-v1";
+  const THEME_KEY = "luna-display-theme-v1";
   const state = {
     view:"home", mode:null, question:"", deck:[], chosen:[], orientations:[], fanScroll:0,
-    shuffling:false, revealIndex:0, flipped:false, record:null, resultBack:"home", toast:""
+    shuffling:false, revealIndex:0, flipped:false, record:null, resultBack:"home", settingsBack:"home", toast:"", aiBusy:false
   };
   let shuffleTimer;
   let toastTimer;
+  let puterLoading;
   const artPreloads = new Map();
   const loadedArt = new Set();
   const cardExports = new Map();
@@ -128,6 +132,35 @@
   const writeStore = (key, value) => {
     try { localStorage.setItem(key, JSON.stringify(value)); return true; } catch { return false; }
   };
+  const readAiSettings = () => {
+    const saved=readStore(AI_SETTINGS_KEY,{});
+    return {
+      provider:saved?.provider==="custom"?"custom":"puter",
+      endpoint:typeof saved?.endpoint==="string"?saved.endpoint:"",
+      model:typeof saved?.model==="string"?saved.model:"",
+      rememberKey:saved?.rememberKey===true
+    };
+  };
+  const storedApiKey = () => {
+    try {return sessionStorage.getItem(API_KEY_STORE) || localStorage.getItem(API_KEY_STORE) || "";} catch {return "";}
+  };
+  const saveApiKey = (key, remember) => {
+    try {
+      sessionStorage.removeItem(API_KEY_STORE);
+      localStorage.removeItem(API_KEY_STORE);
+      if(key) (remember?localStorage:sessionStorage).setItem(API_KEY_STORE,key);
+      return true;
+    } catch {return false;}
+  };
+  const themeChoice = () => {
+    try {const choice=localStorage.getItem(THEME_KEY);return choice==="light"||choice==="dark"?choice:"system";} catch {return "system";}
+  };
+  const applyTheme = choice => {
+    if(choice==="light"||choice==="dark") document.documentElement.dataset.theme=choice;
+    else delete document.documentElement.dataset.theme;
+    try {localStorage.setItem(THEME_KEY,choice);} catch {}
+  };
+  applyTheme(themeChoice());
   const records = () => {
     const value = readStore(RECORDS_KEY, []);
     return Array.isArray(value) ? value : [];
@@ -162,8 +195,8 @@
   const header = immersive => `<header class="site-header">
     <button class="brand" data-action="home" aria-label="返回 LUNA 首页"><span class="brand-mark" aria-hidden="true">☾</span><span class="brand-name">LUNA</span></button>
     <nav class="header-actions" aria-label="主导航">${immersive
-      ? `<span class="header-step">${esc(state.mode ? SPREADS[state.mode].eyebrow : "A QUIET SPACE")}</span><button class="nav-link" data-action="home">退出牌桌</button>`
-      : `<button class="nav-link" data-action="home" ${state.view==="home"?'aria-current="page"':""}>首页</button><button class="nav-link" data-action="journal" ${state.view==="journal"?'aria-current="page"':""}>我的记录</button>`
+      ? `<span class="header-step">${esc(state.mode ? SPREADS[state.mode].eyebrow : "A QUIET SPACE")}</span><button class="nav-link" data-action="home">退出牌桌</button><button class="nav-link" data-action="settings">设置</button>`
+      : `<button class="nav-link" data-action="home" ${state.view==="home"?'aria-current="page"':""}>首页</button><button class="nav-link" data-action="journal" ${state.view==="journal"?'aria-current="page"':""}>我的记录</button><button class="nav-link" data-action="settings" ${state.view==="settings"?'aria-current="page"':""}>设置</button>`
     }</nav>
   </header>`;
   const footer = () => `<footer class="site-footer"><span>© LUNA · 给思绪一点空间</span><span>塔罗用于自我探索，不替代专业建议。</span></footer>`;
@@ -280,6 +313,58 @@
     if (spread==="decision") return "看看这三张牌如何分别映照需要、遗漏与行动前的提醒。";
     return "把过去、现在与下一步放在一起看。留意这些主题之间，是延续、转变，还是一场新的对话。";
   };
+  const aiMessages = reading => (Array.isArray(reading.aiChat)?reading.aiChat:[])
+    .filter(message=>["user","assistant"].includes(message?.role)&&typeof message.content==="string")
+    .slice(-24);
+  const aiThread = reading => {
+    const messages=aiMessages(reading);
+    return messages.length?messages.map(message=>`<div class="ai-message ${message.role}"><span>${message.role==="user"?"你":"LUNA AI"}</span><p>${esc(message.content)}</p></div>`).join("")
+      :`<p class="ai-empty">点击下方按钮，让 AI 结合你的问题和这次牌面给出更具体的解读。</p>`;
+  };
+  const aiPanel = reading => {
+    const settings=readAiSettings();
+    return `<section class="ai-panel" id="ai-panel" aria-labelledby="ai-title">
+      <div class="ai-heading"><div><p class="eyebrow">04 / CONTINUE THE CONVERSATION</p><h2 id="ai-title">和 LUNA AI 聊聊</h2></div><span class="ai-provider">${settings.provider==="puter"?"免费额度 · Puter":"自定义 API"}</span></div>
+      <p class="ai-lead">${reading.question?`围绕“${esc(reading.question)}”继续探索。`:`从这次牌面出发，谈谈你眼下在意的事。`} AI 会参考牌的位置、正逆位与解读，不把塔罗当成确定的预言。</p>
+      <div class="ai-thread" id="ai-thread" role="log" aria-label="AI 对话" aria-live="polite">${aiThread(reading)}</div>
+      <button class="primary ai-start" data-action="ai-start" ${aiMessages(reading).length?"hidden":""}>结合这次牌面开始解读 ${arrow()}</button>
+      <div class="ai-suggestions"><span>你也可以问</span><button type="button" data-action="ai-suggest" data-prompt="结合这次牌面，我接下来可以做哪三件具体的小事？">接下来怎么做？</button><button type="button" data-action="ai-suggest" data-prompt="这次牌面提醒我在行动前先确认什么？">先确认什么？</button></div>
+      <label for="ai-question" class="ai-label">继续问一个问题</label><textarea id="ai-question" maxlength="1000" rows="3" placeholder="例如：如果我想试着迈出一步，先从哪里开始？"></textarea>
+      <div class="ai-controls"><button class="secondary" data-action="ai-send">发送问题 ${arrow()}</button><button class="text-link" data-action="settings">AI 与主题设置</button></div>
+      <p class="ai-status" id="ai-status" role="status" aria-live="polite"></p>
+      <p class="ai-privacy">点击解读或发送后，这次的问题、牌面和对话会发送至你选择的 AI 服务。对话记录只保存在当前浏览器。${settings.provider==="puter"?"首次使用 Puter 免费额度需要登录；额度用尽后请自行决定是否继续使用。":"自定义接口在浏览器直接请求，服务需要允许跨域访问。"}</p>
+    </section>`;
+  };
+  const settingsPage = () => {
+    const ai=readAiSettings(), theme=themeChoice();
+    return shell(`<main class="page settings-page">
+      <button class="back-link" data-action="settings-back">${arrow("left")} 返回${state.settingsBack==="result"?"阅读":state.settingsBack==="journal"?"我的记录":"首页"}</button>
+      <div class="settings-head"><p class="eyebrow">MAKE IT YOURS</p><h1>偏好与 AI</h1><p>选择阅读时的外观，以及解读和追问使用的 AI 服务。</p></div>
+      <section class="settings-panel" aria-labelledby="theme-title"><p class="eyebrow">01 / APPEARANCE</p><h2 id="theme-title">页面主题</h2>
+        <div class="choice-group" role="radiogroup" aria-label="页面主题">
+          <label><input type="radio" name="theme-choice" value="system" ${theme==="system"?"checked":""}><span>跟随系统<small>随设备的明暗模式变化</small></span></label>
+          <label><input type="radio" name="theme-choice" value="light" ${theme==="light"?"checked":""}><span>奶油浅色<small>始终使用浅色</small></span></label>
+          <label><input type="radio" name="theme-choice" value="dark" ${theme==="dark"?"checked":""}><span>深色<small>始终使用深色</small></span></label>
+        </div>
+      </section>
+      <section class="settings-panel" aria-labelledby="provider-title"><p class="eyebrow">02 / AI PROVIDER</p><h2 id="provider-title">解读服务</h2>
+        <div class="choice-group provider-choices" role="radiogroup" aria-label="AI 服务">
+          <label><input type="radio" name="ai-provider" value="puter" ${ai.provider==="puter"?"checked":""}><span>Puter 免费额度<small>默认使用；首次提问需要登录 Puter</small></span></label>
+          <label><input type="radio" name="ai-provider" value="custom" ${ai.provider==="custom"?"checked":""}><span>我的 API<small>连接 OpenAI 兼容的聊天接口</small></span></label>
+        </div>
+        <p class="settings-help">Puter 为每个账户提供每月免费额度。用完后是否升级由你决定，LUNA 不会替你付费或自动升级。</p>
+        <div class="custom-api" id="custom-api" ${ai.provider==="custom"?"":"hidden"}>
+          <label for="ai-endpoint">Chat Completions 接口 URL</label><input id="ai-endpoint" type="url" inputmode="url" placeholder="https://api.example.com/v1/chat/completions" value="${esc(ai.endpoint)}" autocomplete="url" spellcheck="false">
+          <label for="ai-model">模型名称</label><input id="ai-model" type="text" placeholder="例如 gpt-4o-mini" value="${esc(ai.model)}" autocomplete="off" spellcheck="false">
+          <label for="ai-api-key">API Key <span>（留空则保留已输入的密钥）</span></label><input id="ai-api-key" type="password" placeholder="${storedApiKey()?"已输入密钥 · 留空以保留":"仅在你的浏览器中使用"}" autocomplete="off" spellcheck="false">
+          <label class="remember-key"><input type="checkbox" id="remember-api-key" ${ai.rememberKey?"checked":""}>在此设备保存密钥，关闭浏览器后仍可用</label>
+          <p class="settings-help">默认只在当前浏览器会话中保留密钥。勾选后会存到此设备的浏览器存储；共享设备请不要勾选。密钥不会写入网站代码。</p>
+          <button class="text-link" data-action="clear-api-key">清除已保存的密钥</button>
+        </div>
+        <div class="settings-actions"><button class="primary" data-action="save-settings">保存 AI 设置</button><p id="settings-status" role="status" aria-live="polite"></p></div>
+      </section>
+    </main>`);
+  };
   const result = () => {
     const r = state.record;
     if (!r || !SPREADS[r.spread]) return home();
@@ -305,6 +390,7 @@
         ${cards.map((card,i)=>{const orientation=orientationAt(r,i);return `<section class="card-reading"><div><span class="meta">${String(i+1).padStart(2,"0")} / ${esc(spread.positions[i])} · ${orientationName(orientation)}</span><h3>${esc(card.en)}<br>${esc(card.cn)}</h3><span class="meta">${keywordsFor(card,orientation).map(esc).join(" · ")}</span></div><div><p>${esc(meaningFor(card,orientation))}</p><p><strong>在这个位置：</strong>${esc(POSITION_NOTES[spread.positions[i]])}</p></div></section>`}).join("")}
         ${cards.length>1?`<p class="reading-note" style="margin:28px 0 0">把这些牌放在一起时，可以留意重复的主题、不同的感受，以及你自己的经历如何把它们连接起来。</p>`:""}
         <section class="reflection"><p class="eyebrow">03 / 带走一个问题</p><blockquote>“${esc(prompts.at(-1))}”</blockquote></section>
+        ${aiPanel(r)}
         <section class="journal-editor" aria-labelledby="note-title"><p class="eyebrow">TAROT JOURNAL</p><h2 id="note-title">写下你的想法</h2>
           <p class="reading-note" style="margin:0">记录此刻最触动你的那一句，过段时间再回来看看。</p>
           <label for="journal-note" class="visually-hidden">我的阅读笔记</label>
@@ -326,7 +412,7 @@
       :`<div class="empty-journal"><div class="glyph" aria-hidden="true">☾</div><h2>这里还没有记录。</h2><p>从一张牌开始，给今天的想法留个位置。</p><button class="primary" data-action="home">去抽一张牌 ${arrow()}</button></div>`}
     </main>`);
   };
-  const screens = {home,intent,shuffle,select,ready,reveal,result,journal};
+  const screens = {home,intent,shuffle,select,ready,reveal,result,journal,settings:settingsPage};
   function render() {
     app.innerHTML = (screens[state.view]||home)();
     app.querySelectorAll(".face-art").forEach(image => watchArt(image));
@@ -352,7 +438,7 @@
     }
     if (state.view==="select") app.querySelector(".fan").scrollLeft=state.fanScroll;
     if (state.view==="home") document.title="LUNA · 给思绪一点空间";
-    else document.title=`${state.view==="journal"?"我的塔罗日志":state.view==="result"?"我的阅读":SPREADS[state.mode]?.title||"抽牌"} · LUNA`;
+    else document.title=`${state.view==="journal"?"我的塔罗日志":state.view==="result"?"我的阅读":state.view==="settings"?"偏好与 AI":SPREADS[state.mode]?.title||"抽牌"} · LUNA`;
   }
   function watchArt(image) {
     if(!image) return;
@@ -383,7 +469,8 @@
   function navigate(view) {
     clearTimeout(shuffleTimer);
     state.toast=""; state.view=view;
-    if (view==="home"||view==="journal") history.pushState({view},"",view==="home"?"#home":"#journal");
+    if(view==="home"||view==="journal"||view==="settings") history.pushState({view},"",`#${view}`);
+    else if(view==="result"&&state.record) history.pushState({view,id:state.record.id},"",`#reading/${encodeURIComponent(state.record.id)}`);
     window.scrollTo(0,0); render();
   }
   function persist(record) {
@@ -608,8 +695,134 @@
     if(!cards.length) return;
     flash(await copyText(readingText(r,cards))?"解读文字已复制。":"复制失败，请长按文字复制。");
   }
+  const aiContext = reading => {
+    const cards=reading.cards.map(cardById).filter(Boolean);
+    const verdict=reading.spread==="decision"&&cards.length===3?decisionVerdict(cards,reading):null;
+    return [
+      `阅读类型：${SPREADS[reading.spread].title}`,
+      `用户写下的问题：${reading.question?.trim()||"未填写。不要替用户编造具体问题；可以围绕牌面主题提一个澄清问题。"}`,
+      verdict?`已有牌面结论：${verdict.title}。${verdict.reason}`:"",
+      ...cards.map((card,i)=>`${i+1}. ${SPREADS[reading.spread].positions[i]}：${card.cn}（${orientationName(orientationAt(reading,i))}）；关键词：${keywordsFor(card,orientationAt(reading,i)).join("、")}；牌义：${meaningFor(card,orientationAt(reading,i))}`),
+      `原始总结：${readingCaption(reading,cards)}`
+    ].filter(Boolean).join("\n");
+  };
+  const aiSystemPrompt = "你是 LUNA 的中文塔罗反思向导。每次回答都要结合用户写下的问题、实际抽到的牌、牌位和正逆位；只使用提供的牌面资料，不要虚构新的牌或生活事实。把塔罗当作思考工具，不作确定性的未来断言。先回应用户的具体困惑，再说明牌面线索与问题的联系，最后给出可自主选择的小步骤或值得核对的事实。若用户没有填写问题，不要假设其处境，邀请补充。语气温和、清晰、具体，通常控制在 250 到 450 字。若涉及医疗、法律、财务或安全等重要决定，提醒核对事实和咨询合适的专业人士。";
+  const aiRequestMessages = (reading, prompt) => [
+    {role:"system",content:aiSystemPrompt},
+    {role:"user",content:`这次阅读的已知资料：\n${aiContext(reading)}\n\n请以这些资料为依据回答后续问题。`},
+    ...aiMessages(reading).slice(-12).map(message=>({role:message.role,content:message.content})),
+    {role:"user",content:prompt}
+  ];
+  const aiResponseText = response => {
+    const content=response?.message?.content ?? response?.choices?.[0]?.message?.content ?? response;
+    if(typeof content==="string") return content.trim();
+    if(Array.isArray(content)) return content.map(part=>typeof part==="string"?part:part?.text||"").join("\n").trim();
+    return "";
+  };
+  const loadPuter = () => {
+    if(window.puter?.ai?.chat) return Promise.resolve(window.puter);
+    if(!puterLoading) puterLoading=new Promise((resolve,reject)=>{
+      const script=document.createElement("script");
+      script.src="https://js.puter.com/v2/";script.async=true;
+      script.onload=()=>window.puter?.ai?.chat?resolve(window.puter):reject(new Error("Puter SDK 未能启动"));
+      script.onerror=()=>reject(new Error("Puter SDK 加载失败"));
+      document.head.appendChild(script);
+    }).catch(error=>{puterLoading=undefined;throw error;});
+    return puterLoading;
+  };
+  const callAi = async (reading,prompt) => {
+    const settings=readAiSettings();
+    const messages=aiRequestMessages(reading,prompt);
+    if(settings.provider==="puter") {
+      const puter=await loadPuter();
+      const response=await puter.ai.chat(messages,{model:"gpt-5-nano",normalize:true,max_tokens:800,temperature:0.6});
+      return aiResponseText(response);
+    }
+    const key=storedApiKey();
+    if(!settings.endpoint||!settings.model) throw new Error("请先在设置中填写接口 URL 和模型名称。");
+    const controller=new AbortController();
+    const timeout=setTimeout(()=>controller.abort(),60000);
+    try {
+      const response=await fetch(settings.endpoint,{
+        method:"POST",headers:{"Content-Type":"application/json",...(key?{Authorization:`Bearer ${key}`}:{})},
+        body:JSON.stringify({model:settings.model,messages,temperature:0.6,max_tokens:800,stream:false}),signal:controller.signal
+      });
+      if(!response.ok) throw new Error(response.status===401||response.status===403?"接口拒绝访问，请核对密钥和权限。":response.status===429?"接口请求过多，请稍后再试。":`接口返回 ${response.status}，请检查地址和模型。`);
+      return aiResponseText(await response.json());
+    } finally {clearTimeout(timeout);}
+  };
+  const aiErrorMessage = error => {
+    const message=String(error?.message||"");
+    if(message.includes("402")||message.includes("insufficient")||message.includes("quota")) return "免费额度可能已用完。可稍后再试，或在设置里选择自己的 API。";
+    if(error?.name==="AbortError") return "AI 等待超时，请稍后重试。";
+    if(message.includes("Failed to fetch")||message.includes("NetworkError")) return "无法连接 AI 服务。请检查网络，或确认自定义接口允许浏览器跨域请求。";
+    if(message.includes("Puter")) return "无法连接 Puter。请检查网络，或在设置中选择自己的 API。";
+    return message.startsWith("请先")||message.startsWith("接口")?message:"AI 暂时没有回答。若出现登录窗口，请先完成登录再重试。";
+  };
+  async function askAi(prompt) {
+    const reading=state.record;
+    if(!reading||state.aiBusy||!app.querySelector("#ai-panel")) return;
+    const question=prompt.trim();
+    const status=app.querySelector("#ai-status");
+    if(!question) {if(status) status.textContent="先写下你想问的事。";return;}
+    state.aiBusy=true;
+    app.querySelectorAll("#ai-panel button, #ai-question").forEach(control=>control.disabled=true);
+    if(status) status.textContent="正在结合你的问题和牌面整理回答…";
+    try {
+      const answer=await callAi(reading,question);
+      if(!answer) throw new Error("AI 未返回文字");
+      reading.aiChat=[...aiMessages(reading),{role:"user",content:question},{role:"assistant",content:answer}].slice(-24);
+      persist(reading);
+      if(state.view==="result"&&state.record?.id===reading.id) {
+        app.querySelector("#ai-thread").innerHTML=aiThread(reading);
+        app.querySelector(".ai-start").hidden=true;
+        app.querySelector("#ai-question").value="";
+        app.querySelector("#ai-thread").lastElementChild?.scrollIntoView({block:"nearest",behavior:"smooth"});
+        app.querySelector("#ai-status").textContent="已结合这次牌面回答。你可以继续追问。";
+      }
+    } catch(error) {
+      if(state.view==="result"&&state.record?.id===reading.id) app.querySelector("#ai-status").textContent=aiErrorMessage(error);
+    } finally {
+      state.aiBusy=false;
+      if(state.view==="result"&&state.record?.id===reading.id) app.querySelectorAll("#ai-panel button, #ai-question").forEach(control=>control.disabled=false);
+    }
+  }
+  function saveSettings() {
+    const status=app.querySelector("#settings-status");
+    const provider=app.querySelector('input[name="ai-provider"]:checked')?.value==="custom"?"custom":"puter";
+    const endpoint=app.querySelector("#ai-endpoint")?.value.trim()||"";
+    const model=app.querySelector("#ai-model")?.value.trim()||"";
+    const rememberKey=app.querySelector("#remember-api-key")?.checked===true;
+    if(provider==="custom") {
+      try {
+        const url=new URL(endpoint);
+        if(url.protocol!=="https:"||url.username||url.password||url.hash||!url.pathname.endsWith("/chat/completions")) throw new Error();
+      } catch {if(status) status.textContent="请填写 HTTPS 的完整 Chat Completions 接口 URL。";return;}
+      if(!model) {if(status) status.textContent="请填写模型名称。";return;}
+    }
+    const key=app.querySelector("#ai-api-key")?.value.trim()||storedApiKey();
+    if(!writeStore(AI_SETTINGS_KEY,{provider,endpoint,model,rememberKey})||!saveApiKey(key,rememberKey)) {
+      if(status) status.textContent="浏览器无法保存设置，请检查存储权限。";return;
+    }
+    app.querySelector("#ai-api-key").value="";
+    app.querySelector("#ai-api-key").placeholder=key?"已输入密钥 · 留空以保留":"仅在你的浏览器中使用";
+    if(status) status.textContent="✓ AI 设置已保存。";
+    flash("AI 设置已保存。");
+  }
   app.addEventListener("input",event=>{
     if(event.target.id==="question") state.question=event.target.value;
+  });
+  app.addEventListener("change",event=>{
+    if(event.target.name==="theme-choice") applyTheme(event.target.value);
+    if(event.target.name==="ai-provider") {
+      app.querySelector("#custom-api").hidden=event.target.value!=="custom";
+      app.querySelector("#settings-status").textContent="";
+    }
+  });
+  app.addEventListener("keydown",event=>{
+    if(event.target.id==="ai-question"&&event.key==="Enter"&&!event.shiftKey&&!event.isComposing) {
+      event.preventDefault();askAi(event.target.value);
+    }
   });
   app.addEventListener("click",event=>{
     const button=event.target.closest("[data-action]");
@@ -617,7 +830,19 @@
     const action=button.dataset.action;
     if(action==="home") navigate("home");
     else if(action==="journal") navigate("journal");
+    else if(action==="settings") {state.settingsBack=["result","journal"].includes(state.view)?state.view:"home";navigate("settings");}
+    else if(action==="settings-back") navigate(state.settingsBack);
+    else if(action==="save-settings") saveSettings();
+    else if(action==="clear-api-key") {
+      saveApiKey("",false);
+      const field=app.querySelector("#ai-api-key");
+      if(field) {field.value="";field.placeholder="仅在你的浏览器中使用";}
+      app.querySelector("#settings-status").textContent="已清除此设备保存的密钥。";
+    }
     else if(action==="result-back") navigate(state.resultBack==="journal"?"journal":"home");
+    else if(action==="ai-start") askAi(state.record?.question?"请结合我写的问题与本次牌面，给出具体的解读，以及我可以尝试的两三步。":"请根据这次牌面给我一个具体的解读，并告诉我可以从哪里开始思考。若需要更多背景，请向我提问。");
+    else if(action==="ai-suggest") askAi(button.dataset.prompt||"");
+    else if(action==="ai-send") askAi(app.querySelector("#ai-question")?.value||"");
     else if(action==="mode") startMode(button.dataset.mode);
     else if(action==="prepare") {
       state.question=(app.querySelector("#question")?.value||"").trim();
@@ -684,6 +909,7 @@
   window.addEventListener("popstate",()=>{
     const hash=decodeURIComponent(location.hash);
     if(hash==="#journal") {state.view="journal";render();}
+    else if(hash==="#settings") {state.view="settings";render();}
     else if(hash.startsWith("#reading/")) {
       const found=records().find(r=>r.id===hash.slice(9));
       if(found){state.record=found;state.mode=found.spread;state.resultBack="home";state.view="result";render();}
@@ -692,6 +918,7 @@
   });
   const initial=decodeURIComponent(location.hash);
   if(initial==="#journal") state.view="journal";
+  else if(initial==="#settings") state.view="settings";
   else if(initial.startsWith("#reading/")) {
     const found=records().find(r=>r.id===initial.slice(9));
     if(found){state.record=found;state.mode=found.spread;state.resultBack="home";state.view="result";}
