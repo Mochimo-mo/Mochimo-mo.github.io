@@ -327,9 +327,10 @@
   const aiMessages = reading => (Array.isArray(reading.aiChat)?reading.aiChat:[])
     .filter(message=>["user","assistant"].includes(message?.role)&&typeof message.content==="string")
     .slice(-24);
+  const formattedAiText = content => esc(content).replace(/\*\*([^*\n]+)\*\*/g,"<strong>$1</strong>");
   const aiThread = reading => {
     const messages=aiMessages(reading);
-    return messages.length?messages.map(message=>`<div class="ai-message ${message.role}"><span>${message.role==="user"?"你":"LUNA AI"}</span><p>${esc(message.content)}</p></div>`).join("")
+    return messages.length?messages.map(message=>`<div class="ai-message ${message.role}"><span>${message.role==="user"?"你":"LUNA AI"}</span><p>${message.role==="assistant"?formattedAiText(message.content):esc(message.content)}</p></div>`).join("")
       :`<p class="ai-empty">点击下方按钮，让 AI 根据这次牌面和你写下的问题给出更具体的解读。</p>`;
   };
   const aiPanel = reading => {
