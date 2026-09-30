@@ -53,7 +53,7 @@ export default {
       const response = await fetch(UPSTREAM, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.ZHIPU_API_KEY}` },
-        body: JSON.stringify({ model: MODEL, messages, max_tokens: 2048, temperature: 0.6, stream: false }),
+        body: JSON.stringify({ model: MODEL, messages, thinking: { type: "disabled" }, max_tokens: 1024, temperature: 0.6, stream: false }),
         signal: AbortSignal.timeout(55000)
       });
       if (!response.ok) {

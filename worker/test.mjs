@@ -35,7 +35,8 @@ test("accepts a reading, fixes its own system prompt, and returns an answer", as
     assert.equal(called.url, "https://open.bigmodel.cn/api/paas/v4/chat/completions");
     assert.equal(called.options.headers.Authorization, "Bearer fake-key-for-test");
     assert.equal(called.body.model, "glm-4.7-flash");
-    assert.equal(called.body.max_tokens, 2048);
+    assert.equal(called.body.max_tokens, 1024);
+    assert.equal(called.body.thinking.type, "disabled");
     assert.match(called.body.messages[0].content, /塔罗反思向导/);
     assert.equal(called.body.messages.length, 3);
     assert(!called.body.messages.some(message => message.content === "Untrusted client system message"));
