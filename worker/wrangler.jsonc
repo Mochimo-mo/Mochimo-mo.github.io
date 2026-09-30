@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json.schemastore.org/wrangler.json",
+  "name": "luna-tarot-ai",
+  "main": "src/index.js",
+  "compatibility_date": "2026-09-30",
+  "ai": { "binding": "AI" },
+  "ratelimits": [
+    {
+      "name": "AI_RATE_LIMIT",
+      "namespace_id": "1001",
+      "simple": { "limit": 4, "period": 60 }
+    }
+  ]
+}
