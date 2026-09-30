@@ -10,6 +10,8 @@
   let toastTimer;
   const artPreloads = new Map();
   const loadedArt = new Set();
+  const cardExports = new Map();
+  const readingExports = new Map();
   let activeFullArt;
 
   const esc = value => String(value ?? "").replace(/[&<>"']/g, c => ({
@@ -55,6 +57,46 @@
   const orientationName = orientation => orientation === "reversed" ? "逆位" : "正位";
   const keywordsFor = (card, orientation) => orientation === "reversed" ? REVERSED[card.id].keys : card.keys;
   const meaningFor = (card, orientation) => orientation === "reversed" ? REVERSED[card.id].meaning : card.meaning;
+  const wrapCanvasText = (context, text, width) => {
+    const lines=[];
+    let line="";
+    for(const char of String(text)) {
+      if(char==="\n") {if(line) lines.push(line);line="";continue;}
+      if(line && context.measureText(line+char).width>width) {lines.push(line);line=char;}
+      else line+=char;
+    }
+    if(line) lines.push(line);
+    return lines;
+  };
+  const drawCanvasLines = (context, lines, x, y, height) =>
+    lines.forEach((line,i)=>context.fillText(line,x,y+i*height));
+  const downloadImage = (blob, name) => {
+    const link=document.createElement("a");
+    link.href=URL.createObjectURL(blob);link.download=name;link.click();
+    setTimeout(()=>URL.revokeObjectURL(link.href),1000);
+  };
+  const shareOrDownload = async (blob, name, title, description) => {
+    if(typeof File!=="undefined" && navigator.share && navigator.canShare) {
+      const file=new File([blob],name,{type:"image/png"});
+      let supported=false;
+      try {supported=navigator.canShare({files:[file]});} catch {}
+      if(supported) {
+        try {await navigator.share({files:[file],title,text:description});return "shared";}
+        catch(error) {if(error?.name==="AbortError") return "cancelled";}
+      }
+    }
+    downloadImage(blob,name);
+    return "downloaded";
+  };
+  const copyText = async value => {
+    try {await navigator.clipboard.writeText(value);return true;} catch {}
+    const field=document.createElement("textarea");
+    field.value=value;field.style.position="fixed";field.style.opacity="0";
+    document.body.appendChild(field);field.select();
+    let copied=false;
+    try {copied=document.execCommand("copy");} catch {}
+    field.remove();return copied;
+  };
   const dateKey = (date = new Date()) => {
     const n = x => String(x).padStart(2,"0");
     return `${date.getFullYear()}-${n(date.getMonth()+1)}-${n(date.getDate())}`;
@@ -247,8 +289,8 @@
           <p class="reading-note" style="margin:0">记录此刻最触动你的那一句，过段时间再回来看看。</p>
           <label for="journal-note" class="visually-hidden">我的阅读笔记</label>
           <textarea id="journal-note" maxlength="5000" placeholder="我注意到……">${esc(r.note||"")}</textarea>
-          <div class="result-actions"><button class="primary" data-action="save-note">保存记录</button><button class="secondary" data-action="share">生成分享卡</button><button class="secondary" data-action="journal">查看我的记录</button></div>
-          <p class="small-note" style="margin:0">记录仅保存在当前浏览器。清除浏览器数据或更换设备后，记录可能消失。</p>
+          <div class="result-actions"><button class="primary" data-action="save-note">保存记录</button><button class="secondary" data-action="share">保存图文卡片</button><button class="secondary" data-action="copy-reading">复制解读文字</button><button class="secondary" data-action="journal">查看我的记录</button></div>
+          <p class="small-note" style="margin:0">记录保存在当前浏览器。手机保存图文卡片时，请在系统分享菜单里选择“存储图像”或“保存到照片”；不支持分享的浏览器会下载图片。</p>
         </section>
       </div>
       <dialog class="card-dialog" id="card-dialog" aria-label="卡牌大图"><button class="dialog-close" data-action="close-card" aria-label="关闭大图">×</button><div id="dialog-content"></div></dialog>
@@ -267,6 +309,24 @@
   function render() {
     app.innerHTML = (screens[state.view]||home)();
     app.querySelectorAll(".face-art").forEach(image => watchArt(image));
+    if(state.view==="result" && state.record) {
+      const id=state.record.id;
+      const share=app.querySelector('[data-action="share"]');
+      if(share) {
+        share.disabled=true;share.textContent="正在准备图文卡片…";
+        prepareReadingImage(state.record).then(()=>{
+          if(state.view==="result" && state.record?.id===id) {
+            const current=app.querySelector('[data-action="share"]');
+            if(current) {current.disabled=false;current.textContent="保存图文卡片";}
+          }
+        }).catch(()=>{
+          if(state.record?.id===id) {
+            const current=app.querySelector('[data-action="share"]');
+            if(current) {current.disabled=false;current.textContent="重试保存图文卡片";}
+          }
+        });
+      }
+    }
     if (state.view==="select") app.querySelector(".fan").scrollLeft=state.fanScroll;
     if (state.view==="home") document.title="LUNA · 给思绪一点空间";
     else document.title=`${state.view==="journal"?"我的塔罗日志":state.view==="result"?"我的阅读":SPREADS[state.mode]?.title||"抽牌"} · LUNA`;
@@ -325,6 +385,8 @@
       }
     }
     artPreloads.clear();
+    cardExports.clear();
+    readingExports.clear();
     activeFullArt=undefined;
     state.mode=mode;state.question="";state.deck=shuffledCards();state.chosen=[];state.orientations=[];state.record=null;state.fanScroll=0;state.shuffling=false;
     state.view=mode==="daily"?"shuffle":"intent";
@@ -364,98 +426,163 @@
     history.pushState({view:"result",id},"",`#reading/${encodeURIComponent(id)}`);
     window.scrollTo(0,0);render();
   }
+  const cardReadingText = (r,index,card) =>
+    `${card.cn} · ${orientationName(orientationAt(r,index))}\n${SPREADS[r.spread].positions[index]}\n${meaningFor(card,orientationAt(r,index))}`;
+  function prepareCardImage(r,index) {
+    const card=cardById(r?.cards?.[index]);
+    if(!card) return Promise.reject(new Error("找不到卡牌"));
+    const key=`${r.id}:${index}`;
+    if(!cardExports.has(key)) {
+      const task=(async()=>{
+        const image=await loadFullArt(card.id).catch(()=>new Promise((resolve,reject)=>{
+          const preview=new Image();
+          preview.onload=()=>resolve(preview);
+          preview.onerror=()=>reject(new Error("图片加载失败"));
+          preview.src=thumbUrl(card.id);
+        }));
+        const canvas=document.createElement("canvas");
+        canvas.width=900;canvas.height=1790;
+        const c=canvas.getContext("2d");
+        if(!c) throw new Error("无法生成图片");
+        c.fillStyle="#090B13";c.fillRect(0,0,900,1790);
+        if(orientationAt(r,index)==="reversed") {
+          c.save();c.translate(450,675);c.rotate(Math.PI);c.drawImage(image,-450,-675,900,1350);c.restore();
+        } else c.drawImage(image,0,0,900,1350);
+        c.fillStyle="rgba(9,11,19,.72)";c.fillRect(0,0,900,145);
+        c.fillStyle="rgba(9,11,19,.86)";c.fillRect(0,1080,900,270);
+        c.strokeStyle="#BA9B65";c.lineWidth=3;c.strokeRect(27,27,846,1736);
+        c.strokeStyle="rgba(241,235,221,.7)";c.lineWidth=1;c.strokeRect(41,41,818,1708);
+        c.textAlign="center";
+        c.fillStyle="#E3C58C";c.font="42px Georgia,serif";c.fillText(card.n,450,101);
+        c.fillStyle="#F1EBDD";c.font="54px Georgia,serif";c.fillText(card.en.toUpperCase(),450,1190,780);
+        c.fillStyle="#E3C58C";c.font="28px sans-serif";c.fillText(card.cn+" · "+orientationName(orientationAt(r,index)),450,1250);
+        c.font="22px sans-serif";c.fillText("这张牌的解读",450,1426);
+        c.fillStyle="#F1EBDD";c.font="29px sans-serif";
+        const lines=wrapCanvasText(c,meaningFor(card,orientationAt(r,index)),750);
+        drawCanvasLines(c,lines,450,1495,50);
+        c.fillStyle="#BA9B65";c.font="21px sans-serif";
+        c.fillText(SPREADS[r.spread].positions[index],450,1730,760);
+        const blob=await new Promise(resolve=>canvas.toBlob(resolve,"image/png"));
+        if(!blob) throw new Error("无法生成图片");
+        return blob;
+      })().catch(error=>{cardExports.delete(key);throw error;});
+      cardExports.set(key,task);
+    }
+    return cardExports.get(key);
+  }
   async function saveCardImage(index) {
     const r=state.record, card=cardById(r?.cards?.[index]);
     if(!card) return;
     const status=app.querySelector("#card-save-status");
     const button=app.querySelector('[data-action="save-card"]');
     if(button) button.disabled=true;
-    if(status) status.textContent="正在准备图片…";
+    if(status) status.textContent="正在打开系统保存菜单…";
     try {
-      const image=await loadFullArt(card.id);
-      const canvas=document.createElement("canvas");
-      canvas.width=900;canvas.height=1350;
-      const c=canvas.getContext("2d");
-      if(!c) throw new Error("无法生成图片");
-      if(orientationAt(r,index)==="reversed") {
-        c.save();c.translate(450,675);c.rotate(Math.PI);c.drawImage(image,-450,-675,900,1350);c.restore();
-      } else c.drawImage(image,0,0,900,1350);
-      c.fillStyle="rgba(9,11,19,.72)";c.fillRect(0,0,900,145);
-      c.fillStyle="rgba(9,11,19,.86)";c.fillRect(0,1080,900,270);
-      c.strokeStyle="#BA9B65";c.lineWidth=3;c.strokeRect(27,27,846,1296);
-      c.strokeStyle="rgba(241,235,221,.7)";c.lineWidth=1;c.strokeRect(41,41,818,1268);
-      c.textAlign="center";
-      c.fillStyle="#E3C58C";c.font="42px Georgia,serif";c.fillText(card.n,450,101);
-      c.fillStyle="#F1EBDD";c.font="54px Georgia,serif";c.fillText(card.en.toUpperCase(),450,1190,780);
-      c.fillStyle="#E3C58C";c.font="28px sans-serif";c.fillText(card.cn+" · "+orientationName(orientationAt(r,index)),450,1250);
-      const blob=await new Promise(resolve=>canvas.toBlob(resolve,"image/png"));
-      if(!blob) throw new Error("无法生成图片");
-      const link=document.createElement("a");
-      link.href=URL.createObjectURL(blob);
-      link.download=`LUNA-${card.id}-${orientationAt(r,index)}.png`;
-      link.click();
-      setTimeout(()=>URL.revokeObjectURL(link.href),1000);
-      if(status) status.textContent="图片已开始下载。";
+      const blob=await prepareCardImage(r,index);
+      const outcome=await shareOrDownload(blob,`LUNA-${card.id}-${orientationAt(r,index)}.png`,
+        `${card.cn} · LUNA`,cardReadingText(r,index,card));
+      if(status) status.textContent={shared:"已交给系统分享菜单。",cancelled:"已取消保存。",downloaded:"图文图片已下载，可从下载内容存入相册。"}[outcome];
     } catch {
       if(status) status.textContent="保存失败，请重试。";
     } finally {
       if(button) button.disabled=false;
     }
   }
+  async function copyCardReading(index) {
+    const r=state.record, card=cardById(r?.cards?.[index]);
+    if(!card) return;
+    const copied=await copyText(cardReadingText(r,index,card));
+    const status=app.querySelector("#card-save-status");
+    if(status) status.textContent=copied?"解读文字已复制。":"复制失败，请长按上方文字复制。";
+  }
+  const readingCaption = (r,cards) => {
+    if(r.spread==="decision" && cards.length===3) {
+      const verdict=decisionVerdict(cards,r);
+      return `结论：${verdict.title}。${verdict.reason}`;
+    }
+    return summary(r.spread,cards,r);
+  };
+  const readingText = (r,cards) => [
+    SPREADS[r.spread].title,
+    r.question?`“${r.question}”`:"",
+    readingCaption(r,cards),
+    `带走一个问题：${cards.at(-1).question}`
+  ].filter(Boolean).join("\n");
+  function prepareReadingImage(r) {
+    if(readingExports.has(r.id)) return readingExports.get(r.id);
+    const task=(async()=>{
+      const cards=r.cards.map(cardById).filter(Boolean);
+      if(!cards.length) throw new Error("没有卡牌");
+      const artwork=await Promise.all(cards.map(card=>new Promise(resolve=>{
+        const img=new Image();
+        img.onload=()=>resolve(img);
+        img.onerror=()=>{img.onerror=()=>resolve(null);img.src=PREVIEW_ART[card.id];};
+        img.src=thumbUrl(card.id);
+      })));
+      const canvas=document.createElement("canvas");
+      canvas.width=900;canvas.height=1500;
+      const c=canvas.getContext("2d");
+      if(!c) throw new Error("无法生成图片");
+      c.fillStyle="#090B13";c.fillRect(0,0,900,1500);
+      c.strokeStyle="#BA9B65";c.lineWidth=2;c.strokeRect(42,42,816,1416);
+      c.strokeStyle="rgba(186,155,101,.4)";c.strokeRect(55,55,790,1390);
+      c.textAlign="center";c.fillStyle="#BA9B65";c.font="42px Georgia,serif";c.fillText("☾",450,144);
+      c.fillStyle="#F1EBDD";c.font="38px Georgia,serif";c.fillText("L U N A",450,202);
+      c.fillStyle="#BA9B65";c.font="21px sans-serif";c.fillText(SPREADS[r.spread].title,450,273);
+      const drawArtwork=(img,x,y,w,h,reversed)=>{
+        c.save();c.beginPath();c.rect(x,y,w,h);c.clip();
+        c.fillStyle="#15172A";c.fillRect(x,y,w,h);
+        if(img){
+          if(reversed){c.translate(x+w/2,y+h/2);c.rotate(Math.PI);c.drawImage(img,-w/2,-h/2,w,h);}
+          else c.drawImage(img,x,y,w,h);
+        }
+        c.restore();c.strokeStyle="#BA9B65";c.lineWidth=2;c.strokeRect(x,y,w,h);
+      };
+      cards.forEach((card,i)=>{
+        const single=cards.length===1;
+        const w=single?270:190, h=single?405:285;
+        const x=single?315:105+i*250, y=single?335:360;
+        drawArtwork(artwork[i],x,y,w,h,orientationAt(r,i)==="reversed");
+        c.fillStyle="#F1EBDD";c.font=`${single?51:25}px Georgia,serif`;
+        c.fillText(card.en.toUpperCase(),x+w/2,single?807:690,single?700:215);
+        c.fillStyle="#BA9B65";c.font=`${single?26:20}px sans-serif`;
+        c.fillText(card.cn+" · "+orientationName(orientationAt(r,i)),x+w/2,single?856:735,single?500:220);
+        if(!single){c.fillStyle="#75839E";c.font="18px sans-serif";c.fillText(SPREADS[r.spread].positions[i],x+w/2,774,225);}
+      });
+      c.strokeStyle="rgba(186,155,101,.45)";c.beginPath();c.moveTo(200,895);c.lineTo(700,895);c.stroke();
+      c.fillStyle="#BA9B65";c.font="20px sans-serif";c.fillText(r.spread==="decision"?"本次结论":"一句话解读",450,950);
+      c.fillStyle="#F1EBDD";c.font="27px sans-serif";
+      drawCanvasLines(c,wrapCanvasText(c,readingCaption(r,cards),760),450,1008,43);
+      c.strokeStyle="rgba(186,155,101,.45)";c.beginPath();c.moveTo(200,1193);c.lineTo(700,1193);c.stroke();
+      c.fillStyle="#BA9B65";c.font="20px sans-serif";c.fillText("带走一个问题",450,1247);
+      c.fillStyle="#F1EBDD";c.font="25px sans-serif";
+      drawCanvasLines(c,wrapCanvasText(c,cards.at(-1).question,760),450,1302,40);
+      c.fillStyle="#75839E";c.font="21px sans-serif";c.fillText(dateKey(new Date(r.createdAt)),450,1430);
+      const blob=await new Promise(resolve=>canvas.toBlob(resolve,"image/png"));
+      if(!blob) throw new Error("无法生成图片");
+      return blob;
+    })().catch(error=>{readingExports.delete(r.id);throw error;});
+    readingExports.set(r.id,task);
+    return task;
+  }
   async function shareReading() {
     const r=state.record;
     if(!r) return;
     const cards=r.cards.map(cardById).filter(Boolean);
     if(!cards.length) return;
-    const artwork=await Promise.all(cards.map(card=>new Promise(resolve=>{
-      const img=new Image();
-      img.onload=()=>resolve(img);
-      img.onerror=()=>resolve(null);
-      img.src=`./assets/cards/${card.id}.webp`;
-    })));
-    const canvas=document.createElement("canvas");
-    canvas.width=900;canvas.height=1200;
-    const c=canvas.getContext("2d");
-    c.fillStyle="#090B13";c.fillRect(0,0,900,1200);
-    c.strokeStyle="#BA9B65";c.lineWidth=2;c.strokeRect(42,42,816,1116);
-    c.strokeStyle="rgba(186,155,101,.4)";c.strokeRect(55,55,790,1090);
-    c.textAlign="center";c.fillStyle="#BA9B65";c.font="42px Georgia,serif";c.fillText("☾",450,144);
-    c.fillStyle="#F1EBDD";c.font="38px Georgia,serif";c.fillText("L U N A",450,202);
-    c.fillStyle="#BA9B65";c.font="21px sans-serif";c.fillText(SPREADS[r.spread].title,450,273);
-    const drawArtwork=(img,x,y,w,h,reversed)=>{
-      c.save();c.beginPath();c.rect(x,y,w,h);c.clip();
-      c.fillStyle="#15172A";c.fillRect(x,y,w,h);
-      if(img){
-        if(reversed){c.translate(x+w/2,y+h/2);c.rotate(Math.PI);c.drawImage(img,-w/2,-h/2,w,h);}
-        else c.drawImage(img,x,y,w,h);
-      }
-      c.restore();c.strokeStyle="#BA9B65";c.lineWidth=2;c.strokeRect(x,y,w,h);
-    };
-    cards.forEach((card,i)=>{
-      const single=cards.length===1;
-      const w=single?270:190, h=single?405:285;
-      const x=single?315:105+i*250, y=single?335:360;
-      drawArtwork(artwork[i],x,y,w,h,orientationAt(r,i)==="reversed");
-      c.fillStyle="#F1EBDD";c.font=`${single?51:25}px Georgia,serif`;
-      c.fillText(card.en.toUpperCase(),x+w/2,single?807:690,single?700:215);
-      c.fillStyle="#BA9B65";c.font=`${single?26:20}px sans-serif`;
-      c.fillText(card.cn+" · "+orientationName(orientationAt(r,i)),x+w/2,single?856:735,single?500:220);
-      if(!single){c.fillStyle="#75839E";c.font="18px sans-serif";c.fillText(SPREADS[r.spread].positions[i],x+w/2,774,225);}
-    });
-    c.strokeStyle="rgba(186,155,101,.45)";c.beginPath();c.moveTo(200,940);c.lineTo(700,940);c.stroke();
-    c.fillStyle="#F1EBDD";c.font="26px sans-serif";c.fillText(keywordsFor(cards[0],orientationAt(r,0)).join(" · "),450,1004);
-    c.fillStyle="#75839E";c.font="21px sans-serif";c.fillText(dateKey(new Date(r.createdAt)),450,1093);
-    const blob=await new Promise(resolve=>canvas.toBlob(resolve,"image/png"));
-    if(!blob) return flash("分享卡生成失败，请再试一次。");
-    const file=new File([blob],"LUNA-reading.png",{type:"image/png"});
-    if(navigator.canShare?.({files:[file]}) && navigator.share) {
-      try {await navigator.share({files:[file],title:"我的 LUNA 塔罗阅读"});return;}
-      catch(error) {if(error?.name==="AbortError") return;}
-    }
-    const link=document.createElement("a");
-    link.href=URL.createObjectURL(blob);link.download="LUNA-reading.png";link.click();
-    setTimeout(()=>URL.revokeObjectURL(link.href),1000);
-    flash("分享卡已下载。");
+    try {
+      const blob=await prepareReadingImage(r);
+      const outcome=await shareOrDownload(blob,"LUNA-reading.png","我的 LUNA 塔罗阅读",readingText(r,cards));
+      if(outcome==="downloaded") flash("图文图片已下载，可从下载内容存入相册。");
+      else if(outcome==="shared") flash("已交给系统分享菜单。");
+    } catch {flash("图文卡片生成失败，请再试一次。");}
+  }
+  async function copyReading() {
+    const r=state.record;
+    if(!r) return;
+    const cards=r.cards.map(cardById).filter(Boolean);
+    if(!cards.length) return;
+    flash(await copyText(readingText(r,cards))?"解读文字已复制。":"复制失败，请长按文字复制。");
   }
   app.addEventListener("input",event=>{
     if(event.target.id==="question") state.question=event.target.value;
@@ -502,12 +629,22 @@
       if(!card||!Number.isInteger(i)) return;
       const orientation=orientationAt(r,i);
       const content=app.querySelector("#dialog-content");
-      content.innerHTML=`<div class="dialog-card">${face(card,false,orientation)}</div><p class="dialog-position">${esc(SPREADS[r.spread].positions[i])} · ${orientationName(orientation)}</p><h2>${esc(card.en)} · ${esc(card.cn)}</h2><p class="dialog-meaning">${esc(meaningFor(card,orientation))}</p><button class="primary dialog-save" data-action="save-card" data-index="${i}">保存图片</button><p class="dialog-status" id="card-save-status" role="status" aria-live="polite"></p>`;
+      content.innerHTML=`<div class="dialog-card">${face(card,false,orientation)}</div><p class="dialog-position">${esc(SPREADS[r.spread].positions[i])} · ${orientationName(orientation)}</p><h2>${esc(card.en)} · ${esc(card.cn)}</h2><p class="dialog-meaning">${esc(meaningFor(card,orientation))}</p><div class="dialog-actions"><button class="primary dialog-save" data-action="save-card" data-index="${i}" disabled>正在准备图文卡片…</button><button class="secondary" data-action="copy-card" data-index="${i}">复制解读文字</button></div><p class="dialog-save-note">图片会包含上面的解读。手机可在系统分享菜单里选择“存储图像”或“保存到照片”。</p><p class="dialog-status" id="card-save-status" role="status" aria-live="polite"></p>`;
       const dialog=app.querySelector("#card-dialog");
       if(dialog.showModal) dialog.showModal(); else dialog.setAttribute("open","");
       watchArt(content.querySelector(".face-art"));
+      prepareCardImage(r,i).then(()=>{
+        if(state.record?.id!==r.id || !dialog.open || content.querySelector('[data-action="save-card"]')?.dataset.index!==String(i)) return;
+        const save=content.querySelector('[data-action="save-card"]');
+        save.disabled=false;save.textContent="保存图文卡片";
+      }).catch(()=>{
+        if(content.querySelector('[data-action="save-card"]')?.dataset.index===String(i)) {
+          content.querySelector("#card-save-status").textContent="图片准备失败，请重新打开这张牌。";
+        }
+      });
     }
     else if(action==="save-card") saveCardImage(Number(button.dataset.index));
+    else if(action==="copy-card") copyCardReading(Number(button.dataset.index));
     else if(action==="close-card") {
       const dialog=app.querySelector("#card-dialog");
       if(dialog.close) dialog.close(); else dialog.removeAttribute("open");
@@ -518,6 +655,7 @@
       flash(persist(state.record)?"已保存在当前浏览器。":"保存失败，请检查浏览器存储设置。");
     }
     else if(action==="share") shareReading();
+    else if(action==="copy-reading") copyReading();
   });
   window.addEventListener("popstate",()=>{
     const hash=decodeURIComponent(location.hash);
