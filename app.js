@@ -12,13 +12,13 @@
   const loadedArt = new Set();
   const cardExports = new Map();
   const readingExports = new Map();
-  let activeFullArt;
+  const fullArtPromises = new Map();
 
   const esc = value => String(value ?? "").replace(/[&<>"']/g, c => ({
     "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
   })[c]);
   const cardById = id => CARDS.find(card => card.id === id);
-  const artUrl = id => `./assets/cards/${id}.webp`;
+  const artUrl = id => `./assets/cards/${id}.webp?v=hd2`;
   const thumbUrl = id => `./assets/cards/thumbs/${id}.webp?v=2`;
   const avifUrl = id => `./assets/cards/thumbs/${id}.avif`;
   const arrow = (direction="up") => `<svg class="arrow-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" focusable="false">${{
@@ -27,21 +27,22 @@
     right:'<path d="M5 12h14m-7-7 7 7-7 7"/>'
   }[direction]}</svg>`;
   const loadFullArt = id => {
-    if(activeFullArt?.id===id) return activeFullArt.promise;
+    if(fullArtPromises.has(id)) return fullArtPromises.get(id);
     const image=new Image();
     const promise=new Promise((resolve,reject)=>{
       image.onload=async()=>{
         try {if(image.decode) await image.decode();} catch {}
+        if(image.naturalWidth<1024 || image.naturalHeight<1536) {
+          reject(new Error("清晰原图未加载完成"));return;
+        }
         resolve(image);
       };
-      image.onerror=()=>{
-        if(activeFullArt?.id===id) activeFullArt=undefined;
-        reject(new Error("图片加载失败"));
-      };
+      image.onerror=()=>reject(new Error("清晰原图加载失败"));
     });
     image.src=artUrl(id);
-    activeFullArt={id,promise};
-    return promise;
+    const cached=promise.catch(error=>{fullArtPromises.delete(id);throw error;});
+    fullArtPromises.set(id,cached);
+    return cached;
   };
   const preloadArt = id => {
     if(typeof Image==="undefined" || artPreloads.has(id)) return;
@@ -88,6 +89,11 @@
     downloadImage(blob,name);
     return "downloaded";
   };
+  const saveFeedback = outcome => ({
+    shared:"✓ 系统分享已完成，请在所选位置查看高清图文。",
+    downloaded:"✓ 高清图文已生成，下载已开始，请在下载内容查看。",
+    cancelled:"已取消保存。"
+  })[outcome];
   const copyText = async value => {
     try {await navigator.clipboard.writeText(value);return true;} catch {}
     const field=document.createElement("textarea");
@@ -101,6 +107,7 @@
     const n = x => String(x).padStart(2,"0");
     return `${date.getFullYear()}-${n(date.getMonth()+1)}-${n(date.getDate())}`;
   };
+  const todayLabel = () => new Intl.DateTimeFormat("zh-CN",{year:"numeric",month:"long",day:"numeric"}).format(new Date());
   const dateLabel = timestamp => new Intl.DateTimeFormat("zh-CN", {year:"numeric",month:"long",day:"numeric",weekday:"long"}).format(new Date(timestamp));
   const readStore = (key, fallback) => {
     try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; }
@@ -290,6 +297,7 @@
           <label for="journal-note" class="visually-hidden">我的阅读笔记</label>
           <textarea id="journal-note" maxlength="5000" placeholder="我注意到……">${esc(r.note||"")}</textarea>
           <div class="result-actions"><button class="primary" data-action="save-note">保存记录</button><button class="secondary" data-action="share">保存图文卡片</button><button class="secondary" data-action="copy-reading">复制解读文字</button><button class="secondary" data-action="journal">查看我的记录</button></div>
+          <p class="save-feedback" id="reading-save-status" role="status" aria-live="polite"></p>
           <p class="small-note" style="margin:0">记录保存在当前浏览器。手机保存图文卡片时，请在系统分享菜单里选择“存储图像”或“保存到照片”；不支持分享的浏览器会下载图片。</p>
         </section>
       </div>
@@ -323,6 +331,8 @@
           if(state.record?.id===id) {
             const current=app.querySelector('[data-action="share"]');
             if(current) {current.disabled=false;current.textContent="重试保存图文卡片";}
+            const status=app.querySelector("#reading-save-status");
+            if(status) status.textContent="清晰原图加载失败，请重试保存。";
           }
         });
       }
@@ -387,7 +397,7 @@
     artPreloads.clear();
     cardExports.clear();
     readingExports.clear();
-    activeFullArt=undefined;
+    fullArtPromises.clear();
     state.mode=mode;state.question="";state.deck=shuffledCards();state.chosen=[];state.orientations=[];state.record=null;state.fanScroll=0;state.shuffling=false;
     state.view=mode==="daily"?"shuffle":"intent";
     window.scrollTo(0,0);render();
@@ -431,15 +441,10 @@
   function prepareCardImage(r,index) {
     const card=cardById(r?.cards?.[index]);
     if(!card) return Promise.reject(new Error("找不到卡牌"));
-    const key=`${r.id}:${index}`;
+    const key=`${r.id}:${index}:${dateKey()}`;
     if(!cardExports.has(key)) {
       const task=(async()=>{
-        const image=await loadFullArt(card.id).catch(()=>new Promise((resolve,reject)=>{
-          const preview=new Image();
-          preview.onload=()=>resolve(preview);
-          preview.onerror=()=>reject(new Error("图片加载失败"));
-          preview.src=thumbUrl(card.id);
-        }));
+        const image=await loadFullArt(card.id);
         const canvas=document.createElement("canvas");
         canvas.width=900;canvas.height=1790;
         const c=canvas.getContext("2d");
@@ -461,7 +466,8 @@
         const lines=wrapCanvasText(c,meaningFor(card,orientationAt(r,index)),750);
         drawCanvasLines(c,lines,450,1495,50);
         c.fillStyle="#BA9B65";c.font="21px sans-serif";
-        c.fillText(SPREADS[r.spread].positions[index],450,1730,760);
+        c.fillText(SPREADS[r.spread].positions[index],450,1668,760);
+        c.fillStyle="#75839E";c.fillText(`保存于 ${todayLabel()}`,450,1730);
         const blob=await new Promise(resolve=>canvas.toBlob(resolve,"image/png"));
         if(!blob) throw new Error("无法生成图片");
         return blob;
@@ -476,14 +482,14 @@
     const status=app.querySelector("#card-save-status");
     const button=app.querySelector('[data-action="save-card"]');
     if(button) button.disabled=true;
-    if(status) status.textContent="正在打开系统保存菜单…";
+    if(status) {status.classList.remove("is-success");status.textContent="正在打开系统保存菜单…";}
     try {
       const blob=await prepareCardImage(r,index);
-      const outcome=await shareOrDownload(blob,`LUNA-${card.id}-${orientationAt(r,index)}.png`,
+      const outcome=await shareOrDownload(blob,`LUNA-${card.id}-${orientationAt(r,index)}-${dateKey()}.png`,
         `${card.cn} · LUNA`,cardReadingText(r,index,card));
-      if(status) status.textContent={shared:"已交给系统分享菜单。",cancelled:"已取消保存。",downloaded:"图文图片已下载，可从下载内容存入相册。"}[outcome];
+      if(status) {status.classList.toggle("is-success",outcome!=="cancelled");status.textContent=saveFeedback(outcome);}
     } catch {
-      if(status) status.textContent="保存失败，请重试。";
+      if(status) status.textContent="清晰原图加载失败，保存未完成，请重试。";
     } finally {
       if(button) button.disabled=false;
     }
@@ -509,20 +515,17 @@
     `带走一个问题：${cards.at(-1).question}`
   ].filter(Boolean).join("\n");
   function prepareReadingImage(r) {
-    if(readingExports.has(r.id)) return readingExports.get(r.id);
+    const key=`${r.id}:${dateKey()}`;
+    if(readingExports.has(key)) return readingExports.get(key);
     const task=(async()=>{
       const cards=r.cards.map(cardById).filter(Boolean);
       if(!cards.length) throw new Error("没有卡牌");
-      const artwork=await Promise.all(cards.map(card=>new Promise(resolve=>{
-        const img=new Image();
-        img.onload=()=>resolve(img);
-        img.onerror=()=>{img.onerror=()=>resolve(null);img.src=PREVIEW_ART[card.id];};
-        img.src=thumbUrl(card.id);
-      })));
+      const artwork=await Promise.all(cards.map(card=>loadFullArt(card.id)));
       const canvas=document.createElement("canvas");
-      canvas.width=900;canvas.height=1500;
+      canvas.width=1800;canvas.height=3000;
       const c=canvas.getContext("2d");
       if(!c) throw new Error("无法生成图片");
+      c.scale(2,2);
       c.fillStyle="#090B13";c.fillRect(0,0,900,1500);
       c.strokeStyle="#BA9B65";c.lineWidth=2;c.strokeRect(42,42,816,1416);
       c.strokeStyle="rgba(186,155,101,.4)";c.strokeRect(55,55,790,1390);
@@ -557,12 +560,12 @@
       c.fillStyle="#BA9B65";c.font="20px sans-serif";c.fillText("带走一个问题",450,1247);
       c.fillStyle="#F1EBDD";c.font="25px sans-serif";
       drawCanvasLines(c,wrapCanvasText(c,cards.at(-1).question,760),450,1302,40);
-      c.fillStyle="#75839E";c.font="21px sans-serif";c.fillText(dateKey(new Date(r.createdAt)),450,1430);
+      c.fillStyle="#75839E";c.font="21px sans-serif";c.fillText(`保存于 ${todayLabel()}`,450,1430);
       const blob=await new Promise(resolve=>canvas.toBlob(resolve,"image/png"));
       if(!blob) throw new Error("无法生成图片");
       return blob;
-    })().catch(error=>{readingExports.delete(r.id);throw error;});
-    readingExports.set(r.id,task);
+    })().catch(error=>{readingExports.delete(key);throw error;});
+    readingExports.set(key,task);
     return task;
   }
   async function shareReading() {
@@ -570,12 +573,18 @@
     if(!r) return;
     const cards=r.cards.map(cardById).filter(Boolean);
     if(!cards.length) return;
+    const status=app.querySelector("#reading-save-status");
+    const button=app.querySelector('[data-action="share"]');
+    if(button) button.disabled=true;
+    if(status) {status.classList.remove("is-success");status.textContent="正在准备清晰原图…";}
     try {
       const blob=await prepareReadingImage(r);
-      const outcome=await shareOrDownload(blob,"LUNA-reading.png","我的 LUNA 塔罗阅读",readingText(r,cards));
-      if(outcome==="downloaded") flash("图文图片已下载，可从下载内容存入相册。");
-      else if(outcome==="shared") flash("已交给系统分享菜单。");
-    } catch {flash("图文卡片生成失败，请再试一次。");}
+      const outcome=await shareOrDownload(blob,`LUNA-reading-${dateKey()}.png`,"我的 LUNA 塔罗阅读",readingText(r,cards));
+      if(status) {status.classList.toggle("is-success",outcome!=="cancelled");status.textContent=saveFeedback(outcome);}
+      if(outcome!=="cancelled") flash("图文图片已准备完成。");
+    } catch {
+      if(status) status.textContent="清晰原图加载失败，保存未完成，请重试。";
+    } finally {if(button) button.disabled=false;}
   }
   async function copyReading() {
     const r=state.record;
@@ -639,7 +648,7 @@
         save.disabled=false;save.textContent="保存图文卡片";
       }).catch(()=>{
         if(content.querySelector('[data-action="save-card"]')?.dataset.index===String(i)) {
-          content.querySelector("#card-save-status").textContent="图片准备失败，请重新打开这张牌。";
+          content.querySelector("#card-save-status").textContent="清晰原图加载失败，请重新打开这张牌再试。";
         }
       });
     }
