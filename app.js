@@ -5,8 +5,7 @@
   const AI_SETTINGS_KEY = "luna-ai-settings-v1";
   const API_KEY_STORE = "luna-user-api-key-v1";
   const AI_PRESETS = {
-    zhipu:{name:"智谱 GLM-4.7-Flash",endpoint:"https://open.bigmodel.cn/api/paas/v4/chat/completions",model:"glm-4.7-flash",keyName:"智谱 API Key"},
-    modelscope:{name:"魔搭 Qwen3.5",endpoint:"https://api-inference.modelscope.cn/v1/chat/completions",model:"Qwen/Qwen3.5-35B-A3B",keyName:"ModelScope Access Token"}
+    zhipu:{name:"智谱 GLM-4.7-Flash",endpoint:"https://open.bigmodel.cn/api/paas/v4/chat/completions",model:"glm-4.7-flash",keyName:"智谱 API Key"}
   };
   const THEME_KEY = "luna-display-theme-v1";
   const state = {
@@ -15,7 +14,6 @@
   };
   let shuffleTimer;
   let toastTimer;
-  let puterLoading;
   const artPreloads = new Map();
   const loadedArt = new Set();
   const cardExports = new Map();
@@ -138,11 +136,12 @@
   };
   const readAiSettings = () => {
     const saved=readStore(AI_SETTINGS_KEY,{});
+    const provider=["zhipu","custom"].includes(saved?.provider)?saved.provider:"zhipu";
     return {
-      provider:["zhipu","modelscope","custom","puter"].includes(saved?.provider)?saved.provider:"zhipu",
+      provider,
       endpoint:typeof saved?.endpoint==="string"?saved.endpoint:"",
       model:typeof saved?.model==="string"?saved.model:"",
-      rememberKey:saved?.rememberKey===true
+      rememberKey:saved?.provider===provider&&typeof saved?.rememberKey==="boolean"?saved.rememberKey:provider==="zhipu"
     };
   };
   const apiKeyStoreName = provider => provider==="custom"?API_KEY_STORE:`${API_KEY_STORE}-${provider}`;
@@ -159,6 +158,10 @@
       return true;
     } catch {return false;}
   };
+  try {
+    sessionStorage.removeItem(`${API_KEY_STORE}-modelscope`);
+    localStorage.removeItem(`${API_KEY_STORE}-modelscope`);
+  } catch {}
   const themeChoice = () => {
     try {const choice=localStorage.getItem(THEME_KEY);return choice==="light"||choice==="dark"?choice:"system";} catch {return "system";}
   };
@@ -330,10 +333,10 @@
   };
   const aiPanel = reading => {
     const settings=readAiSettings();
-    const providerLabel=AI_PRESETS[settings.provider]?.name|| (settings.provider==="puter"?"Puter 免费额度 · 需登录":"自定义 API");
-    const privacyTip=AI_PRESETS[settings.provider]?
-      `访问令牌只保存在这台设备的浏览器中；请求由浏览器直接发往${settings.provider==="zhipu"?"智谱":"魔搭社区"}。免费服务有速率和额度限制，若浏览器阻止跨域请求，请改用后端接口。`:
-      settings.provider==="puter"?"首次使用 Puter 免费额度需要登录；额度用尽后请自行决定是否继续使用。":"自定义接口在浏览器直接请求，服务需要允许跨域访问。";
+    const providerLabel=AI_PRESETS[settings.provider]?.name||"自定义 API";
+    const privacyTip=settings.provider==="zhipu"?
+      "API Key 只保存在这台设备的浏览器中；请求由浏览器直接发往智谱。免费服务有速率和额度限制。":
+      "自定义接口在浏览器直接请求，服务需要允许跨域访问。";
     return `<section class="ai-panel" id="ai-panel" aria-labelledby="ai-title">
       <div class="ai-heading"><div><p class="eyebrow">04 / CONTINUE THE CONVERSATION</p><h2 id="ai-title">和 LUNA AI 聊聊</h2></div><span class="ai-provider">${providerLabel}</span></div>
       <p class="ai-lead">${reading.question?`围绕“${esc(reading.question)}”继续探索。`:`从这次牌面出发，谈谈你眼下在意的事。`} AI 会参考牌的位置、正逆位与解读，不把塔罗当成确定的预言。</p>
@@ -361,18 +364,16 @@
       <section class="settings-panel" aria-labelledby="provider-title"><p class="eyebrow">02 / AI PROVIDER</p><h2 id="provider-title">解读服务</h2>
         <div class="choice-group provider-choices" role="radiogroup" aria-label="AI 服务">
           <label><input type="radio" name="ai-provider" value="zhipu" ${ai.provider==="zhipu"?"checked":""}><span>智谱 GLM-4.7-Flash<small>免费模型 · 填写自己的 API Key</small></span></label>
-          <label><input type="radio" name="ai-provider" value="modelscope" ${ai.provider==="modelscope"?"checked":""}><span>魔搭 Qwen3.5<small>填写自己的 ModelScope Token</small></span></label>
-          <label><input type="radio" name="ai-provider" value="puter" ${ai.provider==="puter"?"checked":""}><span>Puter 免费额度<small>首次提问需要登录 Puter</small></span></label>
           <label><input type="radio" name="ai-provider" value="custom" ${ai.provider==="custom"?"checked":""}><span>我的 API<small>连接 OpenAI 兼容的聊天接口</small></span></label>
         </div>
-        <p class="settings-help">智谱和魔搭的访问令牌只属于输入它的设备，不会打包进公开网页。访客若要使用 AI，也需要在自己的设备上填写令牌；以后接入后端才能让所有人免设置。免费额度与限流以各服务当时的规则为准。</p>
-        <p class="settings-help">获取密钥：<a href="https://docs.bigmodel.cn/cn/guide/models/free/glm-4.7-flash" target="_blank" rel="noopener noreferrer">智谱免费模型与 API 说明 ↗</a> · <a href="https://modelscope.cn/my/myaccesstoken" target="_blank" rel="noopener noreferrer">魔搭 Access Token ↗</a></p>
-        <div class="custom-api" id="custom-api" ${ai.provider==="puter"?"hidden":""}>
+        <p class="settings-help">智谱是默认服务。首次使用请在这里填写你自己的 API Key；默认保存在这台设备，下次打开不用重填。访客需要各自填写 Key；若要全站共用你的 Key，需把它放到后端，不能写进公开网页。</p>
+        <p class="settings-help"><a href="https://docs.bigmodel.cn/cn/guide/models/free/glm-4.7-flash" target="_blank" rel="noopener noreferrer">查看智谱免费模型与 API 说明 ↗</a></p>
+        <div class="custom-api" id="custom-api">
           <label class="custom-only" for="ai-endpoint" ${ai.provider==="custom"?"":"hidden"}>Chat Completions 接口 URL</label><input class="custom-only" id="ai-endpoint" type="url" inputmode="url" placeholder="https://api.example.com/v1/chat/completions" value="${esc(ai.endpoint)}" autocomplete="url" spellcheck="false" ${ai.provider==="custom"?"":"hidden"}>
           <label class="custom-only" for="ai-model" ${ai.provider==="custom"?"":"hidden"}>模型名称</label><input class="custom-only" id="ai-model" type="text" placeholder="例如 gpt-4o-mini" value="${esc(ai.model)}" autocomplete="off" spellcheck="false" ${ai.provider==="custom"?"":"hidden"}>
           <label for="ai-api-key" id="ai-key-label">${AI_PRESETS[ai.provider]?.keyName||"API Key"} <span>（留空则保留已输入的密钥）</span></label><input id="ai-api-key" type="password" placeholder="${storedApiKey(ai.provider)?"已输入密钥 · 留空以保留":"仅在你的浏览器中使用"}" autocomplete="off" spellcheck="false">
           <label class="remember-key"><input type="checkbox" id="remember-api-key" ${ai.rememberKey?"checked":""}>在此设备保存密钥，关闭浏览器后仍可用</label>
-          <p class="settings-help">默认仅在当前浏览器会话保留密钥。勾选后会存到此设备的浏览器存储；共享设备不要勾选。密钥不会写入网站代码或传给 LUNA 的托管服务器。</p>
+          <p class="settings-help">勾选后密钥保存在此设备的浏览器存储；取消勾选则只留在当前浏览器会话。共享设备建议取消勾选。密钥不会写入网站代码或传给 LUNA 的托管服务器。</p>
           <button class="text-link" data-action="clear-api-key">清除已保存的密钥</button>
         </div>
         <div class="settings-actions"><button class="primary" data-action="save-settings">保存 AI 设置</button><p id="settings-status" role="status" aria-live="polite"></p></div>
@@ -733,25 +734,9 @@
     if(Array.isArray(content)) return content.map(part=>typeof part==="string"?part:part?.text||"").join("\n").trim();
     return "";
   };
-  const loadPuter = () => {
-    if(window.puter?.ai?.chat) return Promise.resolve(window.puter);
-    if(!puterLoading) puterLoading=new Promise((resolve,reject)=>{
-      const script=document.createElement("script");
-      script.src="https://js.puter.com/v2/";script.async=true;
-      script.onload=()=>window.puter?.ai?.chat?resolve(window.puter):reject(new Error("Puter SDK 未能启动"));
-      script.onerror=()=>reject(new Error("Puter SDK 加载失败"));
-      document.head.appendChild(script);
-    }).catch(error=>{puterLoading=undefined;throw error;});
-    return puterLoading;
-  };
   const callAi = async (reading,prompt) => {
     const settings=readAiSettings();
     const messages=aiRequestMessages(reading,prompt);
-    if(settings.provider==="puter") {
-      const puter=await loadPuter();
-      const response=await puter.ai.chat(messages,{model:"gpt-5-nano",normalize:true,max_tokens:800,temperature:0.6});
-      return aiResponseText(response);
-    }
     const preset=AI_PRESETS[settings.provider];
     const key=storedApiKey(settings.provider);
     if(preset&&!key) throw new Error(`请先在设置中填写${preset.keyName}。`);
@@ -774,7 +759,6 @@
     if(message.includes("402")||message.includes("insufficient")||message.includes("quota")) return "免费额度可能已用完。可稍后再试，或在设置里选择自己的 API。";
     if(error?.name==="AbortError") return "AI 等待超时，请稍后重试。";
     if(message.includes("Failed to fetch")||message.includes("NetworkError")) return "浏览器无法直连 AI 接口。请检查网络；若服务方不允许跨域请求，需要后端转发。";
-    if(message.includes("Puter")) return "无法连接 Puter。请检查网络，或在设置中选择自己的 API。";
     return message.startsWith("请先")||message.startsWith("接口")?message:"AI 暂时没有回答，请稍后重试。";
   };
   async function askAi(prompt) {
@@ -808,7 +792,7 @@
   function saveSettings() {
     const status=app.querySelector("#settings-status");
     const selected=app.querySelector('input[name="ai-provider"]:checked')?.value;
-    const provider=["zhipu","modelscope","custom","puter"].includes(selected)?selected:"zhipu";
+    const provider=["zhipu","custom"].includes(selected)?selected:"zhipu";
     const endpoint=app.querySelector("#ai-endpoint")?.value.trim()||"";
     const model=app.querySelector("#ai-model")?.value.trim()||"";
     const rememberKey=app.querySelector("#remember-api-key")?.checked===true;
@@ -822,7 +806,7 @@
     const key=app.querySelector("#ai-api-key")?.value.trim()||storedApiKey(provider);
     if(AI_PRESETS[provider]&&!key) {if(status) status.textContent=`请填写${AI_PRESETS[provider].keyName}。`;return;}
     if(!writeStore(AI_SETTINGS_KEY,{provider,endpoint,model,rememberKey})||
-      (provider!=="puter"&&!saveApiKey(key,rememberKey,provider))) {
+      !saveApiKey(key,rememberKey,provider)) {
       if(status) status.textContent="浏览器无法保存设置，请检查存储权限。";return;
     }
     app.querySelector("#ai-api-key").value="";
@@ -837,7 +821,6 @@
     if(event.target.name==="theme-choice") applyTheme(event.target.value);
     if(event.target.name==="ai-provider") {
       const provider=event.target.value;
-      app.querySelector("#custom-api").hidden=provider==="puter";
       app.querySelectorAll(".custom-only").forEach(field=>field.hidden=provider!=="custom");
       app.querySelector("#ai-key-label").firstChild.textContent=`${AI_PRESETS[provider]?.keyName||"API Key"} `;
       const keyField=app.querySelector("#ai-api-key");
@@ -862,7 +845,7 @@
     else if(action==="save-settings") saveSettings();
     else if(action==="clear-api-key") {
       const provider=app.querySelector('input[name="ai-provider"]:checked')?.value||"zhipu";
-      if(provider!=="puter") saveApiKey("",false,provider);
+      saveApiKey("",false,provider);
       const field=app.querySelector("#ai-api-key");
       if(field) {field.value="";field.placeholder="仅在你的浏览器中使用";}
       app.querySelector("#settings-status").textContent="已清除此设备保存的密钥。";
