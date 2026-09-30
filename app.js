@@ -763,7 +763,7 @@
     try {
       const response=await fetch(endpoint,{
         method:"POST",headers:{"Content-Type":"application/json",...(key?{Authorization:`Bearer ${key}`}:{})},
-        body:JSON.stringify({model,messages,temperature:0.6,max_tokens:800,stream:false}),signal:controller.signal
+        body:JSON.stringify({model,messages,temperature:0.6,max_tokens:preset?2048:800,stream:false}),signal:controller.signal
       });
       if(!response.ok) throw new Error(response.status===401||response.status===403?"接口拒绝访问，请核对密钥和权限。":response.status===429?"接口请求过多或免费额度已用完，请稍后再试。":`接口返回 ${response.status}，请检查地址和模型。`);
       return aiResponseText(await response.json());
