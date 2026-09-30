@@ -45,6 +45,8 @@
     if(typeof Image==="undefined" || artPreloads.has(id)) return;
     const img=new Image();
     img.decoding="async";
+    img.fetchPriority="high";
+    img.onload=()=>{img.decode?.().catch(()=>{});};
     img.onerror=()=>{img.onerror=null;img.src=thumbUrl(id);};
     img.src=avifUrl(id);
     artPreloads.set(id,img);
@@ -89,7 +91,8 @@
     const palette = ["#ba9b65","#a28ab2","#819db8","#b99491","#a9ab8a"];
     return palette[Math.max(0,CARDS.findIndex(c => c.id === id)) % palette.length];
   };
-  const face = (card, compact=false, orientation="upright") => `<div class="tarot-face ${compact?"compact":""} ${orientation==="reversed"?"is-reversed":""} ${loadedArt.has(card.id)?"is-loaded":""}" data-card-id="${card.id}" style="--accent:${accent(card.id)}" role="img" aria-label="${esc(card.en)}，${esc(card.cn)}，${orientationName(orientation)}">
+  const face = (card, compact=false, orientation="upright") => `<div class="tarot-face ${compact?"compact":""} ${orientation==="reversed"?"is-reversed":""} ${loadedArt.has(card.id)?"was-loaded":""}" data-card-id="${card.id}" style="--accent:${accent(card.id)}" role="img" aria-label="${esc(card.en)}，${esc(card.cn)}，${orientationName(orientation)}">
+    <img class="face-preview" src="${PREVIEW_ART[card.id]}" alt="" aria-hidden="true" draggable="false">
     <picture><source srcset="${avifUrl(card.id)}" type="image/avif"><img class="face-art" src="${thumbUrl(card.id)}" alt="" loading="eager" fetchpriority="high" decoding="async" draggable="false"></picture>
     <span class="face-number">${card.n}</span>
     <span class="face-caption"><span class="face-name">${esc(card.en)}</span><span class="face-cn">${esc(card.cn)}</span></span>
@@ -246,8 +249,7 @@
     const face = image.closest(".tarot-face");
     if (!face) return;
     const id=face.dataset.cardId;
-    face.classList.remove("has-error");
-    if(!loadedArt.has(id)) face.classList.remove("is-loaded");
+    face.classList.remove("is-loaded", "has-error");
     const loaded = () => {loadedArt.add(id);face.classList.add("is-loaded");};
     const failed = () => {loadedArt.delete(id);face.classList.remove("is-loaded");face.classList.add("has-error");};
     image.addEventListener("load", loaded, {once:true});

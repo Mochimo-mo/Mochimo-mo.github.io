@@ -101,13 +101,13 @@ h1,h2,h3,p{margin-top:0}
 .card-side.front{transform:rotateY(180deg)}
 .tarot-face{--accent:#ba9b65;width:100%;height:100%;position:relative;border:1px solid var(--accent);border-radius:7px;background:linear-gradient(145deg,#1d2031,#101321 62%,#252031);color:#f1ebdd;overflow:hidden;text-align:center;box-shadow:0 13px 32px #0006}
 .tarot-face.is-reversed{transform:rotate(180deg)}
+.face-preview{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;user-select:none;opacity:1;transition:opacity .2s ease}
+.tarot-face.is-loaded .face-preview{opacity:0}
 .face-art{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center;user-select:none;opacity:0;transition:opacity .2s ease}
 .tarot-face.is-loaded .face-art{opacity:1}
+.tarot-face.was-loaded .face-preview,.tarot-face.was-loaded .face-art{transition-duration:0s}
 .tarot-face:before{content:"";position:absolute;inset:7px;border:1px solid rgba(225,194,132,.78);border-radius:3px;z-index:3;pointer-events:none}
 .tarot-face:after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(8,10,20,.66),transparent 21%,transparent 53%,rgba(8,10,20,.48) 72%,#090b13 100%);z-index:1;pointer-events:none}
-.tarot-face:not(.is-loaded):not(.has-error):after{background:linear-gradient(110deg,#191b2b 18%,#29283a 35%,#191b2b 52%);background-size:220% 100%;animation:art-shimmer 1.5s ease-in-out infinite}
-.tarot-face.has-error:after{content:"✦";display:grid;place-items:center;color:var(--accent);font:42px/1 var(--serif);background:radial-gradient(ellipse at center,#29263a,#111421 70%)}
-@keyframes art-shimmer{to{background-position-x:-220%}}
 .face-number,.face-caption{position:absolute;z-index:2;left:0;right:0}
 .face-number{top:5%;color:#e6c992;font:16px/1 var(--serif);letter-spacing:.17em;text-shadow:0 1px 8px #000}
 .face-caption{bottom:8%;padding:0 14px;text-shadow:0 2px 11px #000}
