@@ -319,12 +319,12 @@
   const aiThread = reading => {
     const messages=aiMessages(reading);
     return messages.length?messages.map(message=>`<div class="ai-message ${message.role}"><span>${message.role==="user"?"你":"LUNA AI"}</span><p>${esc(message.content)}</p></div>`).join("")
-      :`<p class="ai-empty">点击下方按钮，让 AI 结合你的问题和这次牌面给出更具体的解读。</p>`;
+      :`<p class="ai-empty">点击下方按钮，让 AI 根据这次牌面和你写下的问题给出更具体的解读。</p>`;
   };
   const aiPanel = reading => {
     const settings=readAiSettings();
     return `<section class="ai-panel" id="ai-panel" aria-labelledby="ai-title">
-      <div class="ai-heading"><div><p class="eyebrow">04 / CONTINUE THE CONVERSATION</p><h2 id="ai-title">和 LUNA AI 聊聊</h2></div><span class="ai-provider">${settings.provider==="puter"?"免费额度 · Puter":"自定义 API"}</span></div>
+      <div class="ai-heading"><div><p class="eyebrow">04 / CONTINUE THE CONVERSATION</p><h2 id="ai-title">和 LUNA AI 聊聊</h2></div><span class="ai-provider">${settings.provider==="puter"?"Puter 免费额度 · 需登录":"自定义 API"}</span></div>
       <p class="ai-lead">${reading.question?`围绕“${esc(reading.question)}”继续探索。`:`从这次牌面出发，谈谈你眼下在意的事。`} AI 会参考牌的位置、正逆位与解读，不把塔罗当成确定的预言。</p>
       <div class="ai-thread" id="ai-thread" role="log" aria-label="AI 对话" aria-live="polite">${aiThread(reading)}</div>
       <button class="primary ai-start" data-action="ai-start" ${aiMessages(reading).length?"hidden":""}>结合这次牌面开始解读 ${arrow()}</button>
@@ -332,7 +332,7 @@
       <label for="ai-question" class="ai-label">继续问一个问题</label><textarea id="ai-question" maxlength="1000" rows="3" placeholder="例如：如果我想试着迈出一步，先从哪里开始？"></textarea>
       <div class="ai-controls"><button class="secondary" data-action="ai-send">发送问题 ${arrow()}</button><button class="text-link" data-action="settings">AI 与主题设置</button></div>
       <p class="ai-status" id="ai-status" role="status" aria-live="polite"></p>
-      <p class="ai-privacy">点击解读或发送后，这次的问题、牌面和对话会发送至你选择的 AI 服务。对话记录只保存在当前浏览器。${settings.provider==="puter"?"首次使用 Puter 免费额度需要登录；额度用尽后请自行决定是否继续使用。":"自定义接口在浏览器直接请求，服务需要允许跨域访问。"}</p>
+      <p class="ai-privacy">点击解读或发送后，这次的问题、牌面和对话会发送至你选择的 AI 服务。本站的对话记录保存在当前浏览器；服务方按其政策处理收到的内容。${settings.provider==="puter"?"首次使用 Puter 免费额度需要登录；额度用尽后请自行决定是否继续使用。":"自定义接口在浏览器直接请求，服务需要允许跨域访问。"}</p>
     </section>`;
   };
   const settingsPage = () => {
