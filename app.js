@@ -9,6 +9,7 @@
   let shuffleTimer;
   let toastTimer;
   const artPreloads = new Map();
+  const loadedArt = new Set();
   let activeFullArt;
 
   const esc = value => String(value ?? "").replace(/[&<>"']/g, c => ({
@@ -88,7 +89,7 @@
     const palette = ["#ba9b65","#a28ab2","#819db8","#b99491","#a9ab8a"];
     return palette[Math.max(0,CARDS.findIndex(c => c.id === id)) % palette.length];
   };
-  const face = (card, compact=false, orientation="upright") => `<div class="tarot-face ${compact?"compact":""} ${orientation==="reversed"?"is-reversed":""}" style="--accent:${accent(card.id)}" role="img" aria-label="${esc(card.en)}，${esc(card.cn)}，${orientationName(orientation)}">
+  const face = (card, compact=false, orientation="upright") => `<div class="tarot-face ${compact?"compact":""} ${orientation==="reversed"?"is-reversed":""} ${loadedArt.has(card.id)?"is-loaded":""}" data-card-id="${card.id}" style="--accent:${accent(card.id)}" role="img" aria-label="${esc(card.en)}，${esc(card.cn)}，${orientationName(orientation)}">
     <picture><source srcset="${avifUrl(card.id)}" type="image/avif"><img class="face-art" src="${thumbUrl(card.id)}" alt="" loading="eager" fetchpriority="high" decoding="async" draggable="false"></picture>
     <span class="face-number">${card.n}</span>
     <span class="face-caption"><span class="face-name">${esc(card.en)}</span><span class="face-cn">${esc(card.cn)}</span></span>
@@ -241,19 +242,31 @@
     else document.title=`${state.view==="journal"?"我的塔罗日志":state.view==="result"?"我的阅读":SPREADS[state.mode]?.title||"抽牌"} · LUNA`;
   }
   function watchArt(image) {
+    if(!image) return;
     const face = image.closest(".tarot-face");
     if (!face) return;
-    face.classList.remove("is-loaded", "has-error");
-    const loaded = () => face.classList.add("is-loaded");
-    const failed = () => face.classList.add("has-error");
+    const id=face.dataset.cardId;
+    face.classList.remove("has-error");
+    if(!loadedArt.has(id)) face.classList.remove("is-loaded");
+    const loaded = () => {loadedArt.add(id);face.classList.add("is-loaded");};
+    const failed = () => {loadedArt.delete(id);face.classList.remove("is-loaded");face.classList.add("has-error");};
     image.addEventListener("load", loaded, {once:true});
     image.addEventListener("error", failed, {once:true});
     if (image.complete) image.naturalWidth ? loaded() : failed();
   }
   function flash(message) {
-    state.toast=message; render();
+    state.toast=message;
+    const shell=app.querySelector(".app-shell");
+    let toast=shell?.querySelector(".toast");
+    if(shell && !toast) {
+      toast=document.createElement("div");
+      toast.className="toast";
+      toast.setAttribute("role","status");
+      shell.appendChild(toast);
+    }
+    if(toast) toast.textContent=message;
     clearTimeout(toastTimer);
-    toastTimer=setTimeout(()=>{state.toast="";render()},2600);
+    toastTimer=setTimeout(()=>{state.toast="";app.querySelector(".toast")?.remove();},2600);
   }
   function navigate(view) {
     clearTimeout(shuffleTimer);
@@ -489,6 +502,10 @@
     if(found){state.record=found;state.mode=found.spread;state.resultBack="home";state.view="result";}
   }
   render();
+
+  if("serviceWorker" in navigator && location.protocol==="https:") {
+    navigator.serviceWorker.register("./sw.js?v=20260930-1",{scope:"./"}).catch(()=>{});
+  }
 
   // Optional browser agent interface; the visible controls use the same actions.
   if(document.modelContext?.registerTool) {
