@@ -16,7 +16,13 @@
   })[c]);
   const cardById = id => CARDS.find(card => card.id === id);
   const artUrl = id => `./assets/cards/${id}.webp`;
-  const thumbUrl = id => `./assets/cards/thumbs/${id}.webp`;
+  const thumbUrl = id => `./assets/cards/thumbs/${id}.webp?v=2`;
+  const avifUrl = id => `./assets/cards/thumbs/${id}.avif`;
+  const arrow = (direction="up") => `<svg class="arrow-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" focusable="false">${{
+    up:'<path d="M5 19 19 5M7 5h12v12"/>',
+    left:'<path d="M19 12H5m7-7-7 7 7 7"/>',
+    right:'<path d="M5 12h14m-7-7 7 7-7 7"/>'
+  }[direction]}</svg>`;
   const loadFullArt = id => {
     if(activeFullArt?.id===id) return activeFullArt.promise;
     const image=new Image();
@@ -38,7 +44,8 @@
     if(typeof Image==="undefined" || artPreloads.has(id)) return;
     const img=new Image();
     img.decoding="async";
-    img.src=thumbUrl(id);
+    img.onerror=()=>{img.onerror=null;img.src=thumbUrl(id);};
+    img.src=avifUrl(id);
     artPreloads.set(id,img);
   };
   const orientationAt = (reading, index) => reading?.orientations?.[index] === "reversed" ? "reversed" : "upright";
@@ -82,7 +89,7 @@
     return palette[Math.max(0,CARDS.findIndex(c => c.id === id)) % palette.length];
   };
   const face = (card, compact=false, orientation="upright") => `<div class="tarot-face ${compact?"compact":""} ${orientation==="reversed"?"is-reversed":""}" style="--accent:${accent(card.id)}" role="img" aria-label="${esc(card.en)}，${esc(card.cn)}，${orientationName(orientation)}">
-    <img class="face-art" src="${thumbUrl(card.id)}" alt="" loading="${compact?'lazy':'eager'}" ${compact?'fetchpriority="low"':'fetchpriority="high"'} decoding="async" draggable="false">
+    <picture><source srcset="${avifUrl(card.id)}" type="image/avif"><img class="face-art" src="${thumbUrl(card.id)}" alt="" loading="eager" fetchpriority="high" decoding="async" draggable="false"></picture>
     <span class="face-number">${card.n}</span>
     <span class="face-caption"><span class="face-name">${esc(card.en)}</span><span class="face-cn">${esc(card.cn)}</span></span>
   </div>`;
@@ -111,17 +118,17 @@
         ${modeCard("decision","⚖","理清一个决定","看看需要、遗漏与提醒。")}
         ${modeCard("three","☾","三张牌","过去、现在，以及下一步。")}
       </div>
-      <div class="home-extra"><span>也可以不带着具体问题。</span><button class="text-link" data-action="mode" data-mode="single">自由抽一张 →</button></div>
+      <div class="home-extra"><span>也可以不带着具体问题。</span><button class="text-link" data-action="mode" data-mode="single">自由抽一张 ${arrow("right")}</button></div>
     </section>
   </main>`);
   const modeCard = (mode, icon, title, description) => `<button class="mode-card" data-action="mode" data-mode="${mode}">
-    <span class="mode-top"><span class="mode-icon" aria-hidden="true">${icon}</span><span class="mode-arrow" aria-hidden="true">↗</span></span>
+    <span class="mode-icon" aria-hidden="true">${icon}</span><span class="mode-arrow">${arrow()}</span>
     <span class="mode-copy"><strong>${title}</strong><small>${description}</small></span>
   </button>`;
   const intent = () => {
     const spread = SPREADS[state.mode];
     return shell(`<main class="journey">
-      <button class="back-link" data-action="home">← 返回首页</button>
+      <button class="back-link" data-action="home">${arrow("left")} 返回首页</button>
       <section class="stage-center">
         <p class="eyebrow">${spread.eyebrow}</p>
         <div class="intent-icon" aria-hidden="true">☾</div>
@@ -130,7 +137,7 @@
         <div class="question-field"><label for="question">写下此刻正在想的事 <span style="color:var(--blue)">（可选）</span></label>
           <textarea id="question" maxlength="180" placeholder="例如：最近这件事为什么让我犹豫？">${esc(state.question)}</textarea>
         </div>
-        <button class="primary" data-action="prepare">准备好了 <span aria-hidden="true">↗</span></button>
+        <button class="primary" data-action="prepare">准备好了 ${arrow()}</button>
         <p class="small-note">你写下的问题仅显示在本次阅读和当前浏览器的记录里，不会改变抽牌结果。</p>
       </section>
     </main>`,true);
@@ -138,13 +145,13 @@
   const shuffle = () => {
     const spread = SPREADS[state.mode];
     return shell(`<main class="journey">
-      <button class="back-link" data-action="home">← 返回首页</button>
+      <button class="back-link" data-action="home">${arrow("left")} 返回首页</button>
       <section class="stage-center">
         <p class="eyebrow">${spread.eyebrow}</p>
         <h1>${state.shuffling?"让思绪慢下来。":"让牌先安静下来。"}</h1>
         <p class="lead">${state.shuffling?"洗牌中……":"停留片刻，想一想此刻最在意的事。"}</p>
         <div class="deck-stage ${state.shuffling?"is-shuffling":""}" aria-hidden="true"><div class="deck-card"></div><div class="deck-card"></div><div class="deck-card"></div></div>
-        <button class="primary" data-action="shuffle-run" ${state.shuffling?"disabled":""}>${state.shuffling?"正在洗牌":"开始洗牌"} <span aria-hidden="true">↗</span></button>
+        <button class="primary" data-action="shuffle-run" ${state.shuffling?"disabled":""}>${state.shuffling?"正在洗牌":"开始洗牌"} ${arrow()}</button>
       </section>
     </main>`,true);
   };
@@ -152,27 +159,27 @@
   const select = () => {
     const count = SPREADS[state.mode].count;
     return shell(`<main class="journey">
-      <button class="back-link" data-action="home">← 返回首页</button>
+      <button class="back-link" data-action="home">${arrow("left")} 返回首页</button>
       <div class="selection-head"><p class="progress-count">选择 ${state.chosen.length+1} / ${count}</p><h1>凭直觉选择。</h1><p>左右滑动牌组，轻触一张。每张牌可能是正位或逆位。</p></div>
       <div class="fan-wrap"><div class="fan" role="group" aria-label="可选择的牌背">${state.deck.slice(0,18).map((id,i)=>`<button class="fan-card" style="--tilt:${(i-8.5)*.75}deg;--z:${i+1}" data-action="choose" data-index="${i}" aria-label="选择第 ${i+1} 张牌" ${state.chosen.includes(id)?"disabled":""}></button>`).join("")}</div></div>
       ${slots()}<p class="selection-tip">所有牌选好后才会翻开。</p>
     </main>`,true);
   };
-  const ready = () => shell(`<main class="journey"><button class="back-link" data-action="home">← 返回首页</button>
+  const ready = () => shell(`<main class="journey"><button class="back-link" data-action="home">${arrow("left")} 返回首页</button>
     <section class="stage-center"><p class="eyebrow">THE CARDS ARE READY</p><h1>你的牌已经准备好了。</h1><p class="lead">先不要急着赋予它们答案。慢慢翻开，留意第一感觉。</p>
       <div class="deck-stage" aria-hidden="true"><div class="deck-card"></div><div class="deck-card"></div><div class="deck-card"></div></div>
-      ${slots()}<button class="primary" data-action="reveal-start">翻开第一张 <span aria-hidden="true">↗</span></button>
+      ${slots()}<button class="primary" data-action="reveal-start">翻开第一张 ${arrow()}</button>
     </section></main>`,true);
-  const revealedDetails = (card,orientation) => `<h1 class="reveal-name">${esc(card.en)} · ${esc(card.cn)}</h1><p class="reveal-keywords">${orientationName(orientation)} · ${keywordsFor(card,orientation).map(esc).join(" · ")}</p><button class="primary" data-action="reveal-next">${state.revealIndex+1===state.chosen.length?"阅读你的牌":"下一张"} <span aria-hidden="true">↗</span></button>`;
+  const revealedDetails = (card,orientation) => `<h1 class="reveal-name">${esc(card.en)} · ${esc(card.cn)}</h1><p class="reveal-keywords">${orientationName(orientation)} · ${keywordsFor(card,orientation).map(esc).join(" · ")}</p><button class="primary" data-action="reveal-next">${state.revealIndex+1===state.chosen.length?"阅读你的牌":"下一张"} ${arrow()}</button>`;
   const reveal = () => {
     const card = cardById(state.chosen[state.revealIndex]);
     const orientation = state.orientations[state.revealIndex];
     const position = SPREADS[state.mode].positions[state.revealIndex];
-    return shell(`<main class="journey"><button class="back-link" data-action="home">← 返回首页</button>
+    return shell(`<main class="journey"><button class="back-link" data-action="home">${arrow("left")} 返回首页</button>
       <section class="stage-center"><p class="eyebrow">${state.revealIndex+1} / ${state.chosen.length} · ${esc(position)}</p>
         <div class="single-card ${state.flipped?"flipped":""}"><div class="card-rotor"><div class="card-side back"></div><div class="card-side front">${face(card,false,orientation)}</div></div></div>
         <div id="reveal-details" aria-live="polite">${state.flipped?revealedDetails(card,orientation)
-          : `<h1 class="reveal-name">第 ${state.revealIndex+1} 张 · ${esc(position)}</h1><p class="lead">准备好以后，轻轻翻开。</p><button class="primary" data-action="flip">翻开这张牌 <span aria-hidden="true">↗</span></button>`}</div>
+          : `<h1 class="reveal-name">第 ${state.revealIndex+1} 张 · ${esc(position)}</h1><p class="lead">准备好以后，轻轻翻开。</p><button class="primary" data-action="flip">翻开这张牌 ${arrow()}</button>`}</div>
       </section></main>`,true);
   };
   const summary = (spread, cards, reading) => {
@@ -190,13 +197,13 @@
     if (!cards.length) return home();
     const prompts = cards.map(card=>card.question);
     return shell(`<main class="page result">
-      <button class="back-link result-back" data-action="result-back">← 返回${state.resultBack==="journal"?"我的记录":"首页"}</button>
+      <button class="back-link result-back" data-action="result-back">${arrow("left")} 返回${state.resultBack==="journal"?"我的记录":"首页"}</button>
       <div class="result-head"><p class="eyebrow">${spread.eyebrow} · YOUR READING</p><h1>${spread.title}</h1>
         ${r.question?`<p class="result-question">“${esc(r.question)}”</p>`:""}
         <p class="result-date">${dateLabel(r.createdAt)}</p>
       </div>
       <section class="result-cards" aria-label="这次抽到的牌">${cards.map((card,i)=>`<button class="result-card" data-action="inspect-card" data-index="${i}" aria-label="放大查看${esc(card.cn)}，${orientationName(orientationAt(r,i))}">${face(card, cards.length>1, orientationAt(r,i))}<span class="position-label">${i+1}. ${esc(spread.positions[i])} · ${orientationName(orientationAt(r,i))}</span></button>`).join("")}</section>
-      ${cards.length>1?'<p class="cards-scroll-hint" aria-hidden="true">左右滑动，查看全部牌面 <span>→</span></p>':""}
+      ${cards.length>1?`<p class="cards-scroll-hint" aria-hidden="true">左右滑动，查看全部牌面 ${arrow("right")}</p>`:""}
       <div class="reading-panel">
         <p class="eyebrow">01 / 一句话解读</p><p class="summary">${esc(summary(r.spread,cards,r))}</p>
         <p class="reading-note">这是一个思考的角度，而不是对未来的保证。看看哪些文字与你当下的经验相呼应，也允许自己有不同的理解。</p>
@@ -221,8 +228,8 @@
     return shell(`<main class="page journal-page">
       <div class="journal-head"><p class="eyebrow">YOUR JOURNAL</p><h1>我的塔罗日志</h1><p>回看抽过的牌，也回看当时的自己。</p></div>
       <div class="storage-note">阅读和笔记保存在当前浏览器中。清除浏览器数据或更换设备后，它们可能消失。</div>
-      ${list.length?`<div class="journal-list">${list.map(r=>{const d=new Date(r.createdAt);return `<button class="journal-item" data-action="open-record" data-id="${esc(r.id)}"><span class="journal-date">${d.getDate()}<small>${d.getMonth()+1} 月</small></span><span class="journal-item-main"><strong>${esc(r.question||SPREADS[r.spread].title)}</strong><span>${esc(SPREADS[r.spread].title)} · ${r.cards.map((id,i)=>esc((cardById(id)?.cn||"")+"（"+orientationName(orientationAt(r,i))+"）")).join(" · ")}${r.note?" · 已记录想法":""}</span></span><span class="journal-item-arrow" aria-hidden="true">↗</span></button>`}).join("")}</div>`
-      :`<div class="empty-journal"><div class="glyph" aria-hidden="true">☾</div><h2>这里还没有记录。</h2><p>从一张牌开始，给今天的想法留个位置。</p><button class="primary" data-action="home">去抽一张牌 <span aria-hidden="true">↗</span></button></div>`}
+      ${list.length?`<div class="journal-list">${list.map(r=>{const d=new Date(r.createdAt);return `<button class="journal-item" data-action="open-record" data-id="${esc(r.id)}"><span class="journal-date">${d.getDate()}<small>${d.getMonth()+1} 月</small></span><span class="journal-item-main"><strong>${esc(r.question||SPREADS[r.spread].title)}</strong><span>${esc(SPREADS[r.spread].title)} · ${r.cards.map((id,i)=>esc((cardById(id)?.cn||"")+"（"+orientationName(orientationAt(r,i))+"）")).join(" · ")}${r.note?" · 已记录想法":""}</span></span><span class="journal-item-arrow">${arrow()}</span></button>`}).join("")}</div>`
+      :`<div class="empty-journal"><div class="glyph" aria-hidden="true">☾</div><h2>这里还没有记录。</h2><p>从一张牌开始，给今天的想法留个位置。</p><button class="primary" data-action="home">去抽一张牌 ${arrow()}</button></div>`}
     </main>`);
   };
   const screens = {home,intent,shuffle,select,ready,reveal,result,journal};
@@ -452,13 +459,7 @@
       content.innerHTML=`<div class="dialog-card">${face(card,false,orientation)}</div><p class="dialog-position">${esc(SPREADS[r.spread].positions[i])} · ${orientationName(orientation)}</p><h2>${esc(card.en)} · ${esc(card.cn)}</h2><p class="dialog-meaning">${esc(meaningFor(card,orientation))}</p><button class="primary dialog-save" data-action="save-card" data-index="${i}">保存图片</button><p class="dialog-status" id="card-save-status" role="status" aria-live="polite"></p>`;
       const dialog=app.querySelector("#card-dialog");
       if(dialog.showModal) dialog.showModal(); else dialog.setAttribute("open","");
-      const thumbnail=content.querySelector(".face-art");
-      loadFullArt(card.id).then(image=>{
-        if(!dialog.open || !content.contains(thumbnail)) return;
-        image.className="face-art";image.alt="";image.draggable=false;
-        thumbnail.replaceWith(image);
-        watchArt(image);
-      }).catch(()=>{});
+      watchArt(content.querySelector(".face-art"));
     }
     else if(action==="save-card") saveCardImage(Number(button.dataset.index));
     else if(action==="close-card") {
