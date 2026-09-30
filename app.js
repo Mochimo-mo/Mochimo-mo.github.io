@@ -736,7 +736,42 @@
     if(Array.isArray(content)) return content.map(part=>typeof part==="string"?part:part?.text||"").join("\n").trim();
     return "";
   };
-  const callAi = async (reading,prompt) => {
+  const readAiStream = async (response, onDelta) => {
+    const reader=response.body?.getReader();
+    if(!reader) throw new Error("AI 回复暂不可用，请稍后重试。");
+    const decoder=new TextDecoder();
+    let pending="", answer="", completed=false;
+    const acceptEvent = event => {
+      const data=event.split(/\r?\n/).filter(line=>line.startsWith("data:"))
+        .map(line=>line.slice(5).trimStart()).join("\n");
+      if(!data) return;
+      let packet;
+      try {packet=JSON.parse(data);} catch {throw new Error("AI 回复格式异常，请稍后重试。");}
+      if(typeof packet.error==="string") throw new Error("本站服务："+packet.error);
+      if(typeof packet.delta==="string"&&packet.delta) {
+        answer+=packet.delta;
+        onDelta?.(packet.delta,answer);
+      }
+      if(packet.done===true) completed=true;
+    };
+    try {
+      while(true) {
+        const {done,value}=await reader.read();
+        if(done) break;
+        pending+=decoder.decode(value,{stream:true});
+        let match;
+        while((match=/\r?\n\r?\n/.exec(pending))) {
+          acceptEvent(pending.slice(0,match.index));
+          pending=pending.slice(match.index+match[0].length);
+        }
+      }
+      pending+=decoder.decode();
+      if(pending.trim()) acceptEvent(pending);
+      if(!completed||!answer.trim()) throw new Error("AI 回复未完成，请稍后重试。");
+      return answer.trim();
+    } finally {reader.releaseLock();}
+  };
+  const callAi = async (reading,prompt,onDelta) => {
     const settings=readAiSettings();
     const messages=aiRequestMessages(reading,prompt);
     const siteProvided=settings.provider==="zhipu";
@@ -747,7 +782,7 @@
     const timeout=setTimeout(()=>controller.abort(),60000);
     try {
       const response=await fetch(endpoint,{
-        method:"POST",headers:{"Content-Type":"application/json",...(key?{Authorization:`Bearer ${key}`}:{})},
+        method:"POST",headers:{"Content-Type":"application/json",...(siteProvided?{Accept:"text/event-stream"}:{}),...(key?{Authorization:`Bearer ${key}`}:{})},
         body:JSON.stringify(siteProvided?{messages}:{model:settings.model,messages,temperature:0.6,max_tokens:800,stream:false}),
         signal:controller.signal
       });
@@ -758,7 +793,10 @@
         }
         throw new Error(response.status===401||response.status===403?"接口拒绝访问，请核对密钥和权限。":response.status===429?"接口请求过多或免费额度已用完，请稍后再试。":`接口返回 ${response.status}，请检查地址和模型。`);
       }
-      return aiResponseText(await response.json());
+      if(siteProvided&&response.headers.get("Content-Type")?.includes("text/event-stream")) return readAiStream(response,onDelta);
+      const answer=aiResponseText(await response.json());
+      if(answer) onDelta?.(answer,answer);
+      return answer;
     } finally {clearTimeout(timeout);}
   };
   const aiErrorMessage = error => {
@@ -768,7 +806,7 @@
     if(message.includes("Failed to fetch")||message.includes("NetworkError")) return readAiSettings().provider==="zhipu"?"暂时无法连接本站 AI 服务，请检查网络并稍后重试。":"浏览器无法直连 AI 接口。请检查网络；若服务方不允许跨域请求，需要后端转发。";
     return message.startsWith("本站服务：")||message.startsWith("请先")||message.startsWith("接口")?message:"AI 暂时没有回答，请稍后重试。";
   };
-  async function askAi(prompt) {
+  async function askAi(prompt, visibleQuestion=prompt) {
     const reading=state.record;
     if(!reading||state.aiBusy||!app.querySelector("#ai-panel")) return;
     const question=prompt.trim();
@@ -776,24 +814,65 @@
     if(!question) {if(status) status.textContent="先写下你想问的事。";return;}
     state.aiBusy=true;
     app.querySelectorAll("#ai-panel button, #ai-question").forEach(control=>control.disabled=true);
-    if(status) status.textContent="正在结合你的问题和牌面整理回答…";
+    const thread=app.querySelector("#ai-thread");
+    thread.querySelectorAll("[data-ai-pending]").forEach(message=>message.remove());
+    thread.querySelector(".ai-empty")?.remove();
+    const userMessage=document.createElement("div");
+    userMessage.className="ai-message user";
+    userMessage.dataset.aiPending="";
+    userMessage.innerHTML="<span>你</span><p>"+esc(visibleQuestion)+"</p>";
+    const aiMessage=document.createElement("div");
+    aiMessage.className="ai-message assistant is-loading";
+    aiMessage.dataset.aiPending="";
+    aiMessage.innerHTML='<span>LUNA AI</span><p class="ai-typing" role="status" aria-label="AI 正在回答"><i></i><i></i><i></i></p>';
+    thread.append(userMessage,aiMessage);
+    thread.scrollTop=thread.scrollHeight;
+    app.querySelector(".ai-start").hidden=true;
+    app.querySelector("#ai-question").value="";
+    if(status) status.textContent="AI 正在阅读问题和牌面…";
+    const answerText=aiMessage.querySelector("p");
+    const active=()=>state.view==="result"&&state.record?.id===reading.id&&app.querySelector("#ai-thread")===thread;
     try {
-      const answer=await callAi(reading,question);
+      const answer=await callAi(reading,question,(_piece,soFar)=>{
+        if(!active()) return;
+        const follow=thread.scrollHeight-thread.scrollTop-thread.clientHeight<100;
+        aiMessage.classList.remove("is-loading");
+        answerText.className="ai-writing";
+        answerText.removeAttribute("role");
+        answerText.removeAttribute("aria-label");
+        answerText.innerHTML=formattedAiText(soFar);
+        if(follow) thread.scrollTop=thread.scrollHeight;
+        if(status) status.textContent="AI 正在逐段回答…";
+      });
       if(!answer) throw new Error("AI 未返回文字");
-      reading.aiChat=[...aiMessages(reading),{role:"user",content:question},{role:"assistant",content:answer}].slice(-24);
+      reading.aiChat=[...aiMessages(reading),{role:"user",content:visibleQuestion},{role:"assistant",content:answer}].slice(-24);
       persist(reading);
-      if(state.view==="result"&&state.record?.id===reading.id) {
-        app.querySelector("#ai-thread").innerHTML=aiThread(reading);
-        app.querySelector(".ai-start").hidden=true;
-        app.querySelector("#ai-question").value="";
-        app.querySelector("#ai-thread").lastElementChild?.scrollIntoView({block:"nearest",behavior:"smooth"});
-        app.querySelector("#ai-status").textContent="已结合这次牌面回答。你可以继续追问。";
+      if(active()) {
+        userMessage.removeAttribute("data-ai-pending");
+        aiMessage.removeAttribute("data-ai-pending");
+        aiMessage.classList.remove("is-loading");
+        answerText.className="";
+        answerText.removeAttribute("role");
+        answerText.removeAttribute("aria-label");
+        answerText.innerHTML=formattedAiText(answer);
+        thread.scrollTop=thread.scrollHeight;
+        if(status) status.textContent="已结合这次牌面回答。你可以继续追问。";
       }
     } catch(error) {
-      if(state.view==="result"&&state.record?.id===reading.id) app.querySelector("#ai-status").textContent=aiErrorMessage(error);
+      if(active()) {
+        aiMessage.classList.remove("is-loading");
+        aiMessage.classList.add("is-error");
+        answerText.className="";
+        answerText.removeAttribute("role");
+        answerText.removeAttribute("aria-label");
+        answerText.textContent=aiErrorMessage(error);
+        app.querySelector("#ai-question").value=visibleQuestion;
+        thread.scrollTop=thread.scrollHeight;
+        if(status) status.textContent="回复未完成，问题已保留，可以重试。";
+      }
     } finally {
       state.aiBusy=false;
-      if(state.view==="result"&&state.record?.id===reading.id) app.querySelectorAll("#ai-panel button, #ai-question").forEach(control=>control.disabled=false);
+      if(active()) app.querySelectorAll("#ai-panel button, #ai-question").forEach(control=>control.disabled=false);
     }
   }
   function saveSettings() {
@@ -856,7 +935,7 @@
       app.querySelector("#settings-status").textContent="已清除此设备保存的密钥。";
     }
     else if(action==="result-back") navigate(state.resultBack==="journal"?"journal":"home");
-    else if(action==="ai-start") askAi(state.record?.question?"请结合我写的问题与本次牌面，给出具体的解读，以及我可以尝试的两三步。":"请根据这次牌面给我一个具体的解读，并告诉我可以从哪里开始思考。若需要更多背景，请向我提问。");
+    else if(action==="ai-start") askAi(state.record?.question?"请结合我写的问题与本次牌面，给出具体的解读，以及我可以尝试的两三步。":"请根据这次牌面给我一个具体的解读，并告诉我可以从哪里开始思考。若需要更多背景，请向我提问。",state.record?.question||"解读这次牌面");
     else if(action==="ai-suggest") askAi(button.dataset.prompt||"");
     else if(action==="ai-send") askAi(app.querySelector("#ai-question")?.value||"");
     else if(action==="mode") startMode(button.dataset.mode);

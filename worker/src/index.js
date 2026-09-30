@@ -28,6 +28,108 @@ function validMessages(input) {
   return [{ role: "system", content: SYSTEM_PROMPT }, ...messages];
 }
 
+function streamAiAnswer(upstream) {
+  const reader = upstream.body.getReader();
+  let cancelled = false;
+  const body = new ReadableStream({
+    start(controller) {
+      const encoder = new TextEncoder();
+      const send = value => {
+        if (!cancelled) controller.enqueue(encoder.encode("data: " + JSON.stringify(value) + "\n\n"));
+      };
+      void (async () => {
+        const decoder = new TextDecoder();
+        let pending = "";
+        let answer = "";
+        let finished = false;
+        let hidingThought = false;
+        let tagPending = "";
+        const visibleContent = part => {
+          let text = tagPending + part;
+          let visible = "";
+          tagPending = "";
+          while (text) {
+            if (hidingThought) {
+              const end = text.indexOf("</think>");
+              if (end < 0) {
+                tagPending = text.slice(-7);
+                return visible;
+              }
+              text = text.slice(end + 8);
+              hidingThought = false;
+            } else {
+              const start = text.indexOf("<think>");
+              if (start >= 0) {
+                visible += text.slice(0, start);
+                text = text.slice(start + 7);
+                hidingThought = true;
+              } else {
+                const tag = "<think>";
+                let suffix = 0;
+                for (let n = Math.min(tag.length - 1, text.length); n > 0; n--) {
+                  if (text.endsWith(tag.slice(0, n))) { suffix = n; break; }
+                }
+                visible += text.slice(0, text.length - suffix);
+                tagPending = text.slice(text.length - suffix);
+                return visible;
+              }
+            }
+          }
+          return visible;
+        };
+        const acceptEvent = event => {
+          const data = event.split(/\r?\n/).filter(line => line.startsWith("data:"))
+            .map(line => line.slice(5).trimStart()).join("\n");
+          if (!data) return;
+          if (data === "[DONE]") { finished = true; return; }
+          let packet;
+          try { packet = JSON.parse(data); } catch { return; }
+          if (packet?.error) throw new Error("upstream stream error");
+          const choice = packet?.choices?.[0];
+          if (typeof choice?.delta?.content === "string") {
+            const visible = visibleContent(choice.delta.content);
+            const piece = visible.slice(0, Math.max(0, 12000 - answer.length));
+            if (piece) {
+              answer += piece;
+              send({ delta: piece });
+            }
+          }
+          if (choice?.finish_reason) finished = true;
+        };
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            pending += decoder.decode(value, { stream: true });
+            if (pending.length > 250000) throw new Error("oversized stream");
+            let match;
+            while ((match = /\r?\n\r?\n/.exec(pending))) {
+              acceptEvent(pending.slice(0, match.index));
+              pending = pending.slice(match.index + match[0].length);
+            }
+          }
+          pending += decoder.decode();
+          if (pending.trim()) acceptEvent(pending);
+          if (finished && answer.trim()) send({ done: true });
+          else send({ error: "AI 回复未完成，请稍后重试。" });
+        } catch {
+          if (!cancelled) send({ error: "智谱模型连接中断，请稍后重试。" });
+        } finally {
+          reader.releaseLock();
+          if (!cancelled) controller.close();
+        }
+      })();
+    },
+    cancel() {
+      cancelled = true;
+      return reader.cancel();
+    }
+  });
+  return new Response(body, {
+    headers: { ...cors, "Content-Type": "text/event-stream; charset=utf-8", "X-Content-Type-Options": "nosniff" }
+  });
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -49,17 +151,22 @@ export default {
     const messages = validMessages(body?.messages);
     if (!messages) return json({ error: "请先完成抽牌，再提出简短的问题。" }, 400);
     if (!env.ZHIPU_API_KEY) return json({ error: "本站 AI 尚未配置完成。" }, 503);
+    const wantsStream = request.headers.get("Accept")?.includes("text/event-stream") === true;
     try {
       const response = await fetch(UPSTREAM, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.ZHIPU_API_KEY}` },
-        body: JSON.stringify({ model: MODEL, messages, thinking: { type: "disabled" }, max_tokens: 1024, temperature: 0.6, stream: false }),
+        body: JSON.stringify({ model: MODEL, messages, thinking: { type: "disabled" }, max_tokens: 1024, temperature: 0.6, stream: wantsStream }),
         signal: AbortSignal.timeout(55000)
       });
       if (!response.ok) {
         if (response.status === 429) return json({ error: "智谱当前限流或免费额度已用完，请稍后重试。" }, 429);
         if (response.status === 401 || response.status === 403) return json({ error: "本站的智谱服务密钥暂不可用。" }, 503);
         return json({ error: "智谱模型暂不可用，请稍后重试。" }, 503);
+      }
+      if (wantsStream) {
+        if (!response.body) return json({ error: "智谱模型暂不可用，请稍后重试。" }, 503);
+        return streamAiAnswer(response);
       }
       const result = await response.json();
       const content = result?.choices?.[0]?.message?.content;

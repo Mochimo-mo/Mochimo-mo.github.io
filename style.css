@@ -180,6 +180,16 @@ h1,h2,h3,p{margin-top:0}
 .ai-message{max-width:90%;border-radius:10px;padding:12px 16px;background:var(--panel2);border:1px solid var(--line)}
 .ai-message.user{align-self:flex-end;background:rgba(186,155,101,.13)}.ai-message.assistant{align-self:flex-start}
 .ai-message span{display:block;color:var(--gold);font-size:12px;font-weight:600;letter-spacing:.08em;margin-bottom:5px}.ai-message p{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;line-height:1.8}
+
+.ai-message.assistant.is-loading{min-width:106px}
+.ai-message.assistant.is-error{border-color:var(--gold)}
+.ai-typing{display:flex;align-items:center;gap:6px;min-height:25px}
+.ai-typing i{display:block;width:6px;height:6px;border-radius:50%;background:var(--gold);animation:ai-dot 1.2s ease-in-out infinite}
+.ai-typing i:nth-child(2){animation-delay:.16s}.ai-typing i:nth-child(3){animation-delay:.32s}
+.ai-writing::after{content:"";display:inline-block;width:2px;height:1em;margin-left:3px;background:var(--gold);vertical-align:-.15em;animation:ai-caret .7s steps(2,start) infinite}
+@keyframes ai-dot{0%,60%,100%{opacity:.35;transform:translateY(0)}30%{opacity:1;transform:translateY(-4px)}}
+@keyframes ai-caret{to{opacity:0}}
+@media (prefers-reduced-motion:reduce){.ai-typing i,.ai-writing::after{animation:none}}
 .ai-start{margin-top:18px;width:100%}.ai-start[hidden]{display:none}
 .ai-suggestions{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:19px 0 14px;color:var(--muted);font-size:13px}
 .ai-suggestions button{background:transparent;color:var(--ivory);border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:12px}.ai-suggestions button:hover{border-color:var(--gold)}

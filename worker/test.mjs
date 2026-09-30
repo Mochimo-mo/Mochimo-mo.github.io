@@ -68,3 +68,59 @@ test("does not expose upstream authentication errors", async () => {
     assert(!JSON.stringify(await response.json()).includes("private upstream detail"));
   } finally { globalThis.fetch = originalFetch; }
 });
+
+test("streams visible text progressively without reasoning, including split UTF-8 and split think tags", async () => {
+  const originalFetch = globalThis.fetch;
+  let called;
+  globalThis.fetch = async (_url, options) => {
+    called = JSON.parse(options.body);
+    const packets = [
+      { choices: [{ delta: { reasoning_content: "private thought", content: "先写" } }] },
+      { choices: [{ delta: { content: "<thi" } }] },
+      { choices: [{ delta: { content: "nk>hidden</th" } }] },
+      { choices: [{ delta: { content: "ink>下一步。" }, finish_reason: "stop" }] }
+    ];
+    const raw = packets.map(packet => "data: " + JSON.stringify(packet) + "\n\n").join("") + "data: [DONE]\n\n";
+    const bytes = new TextEncoder().encode(raw);
+    const split = bytes.indexOf(0xe5) + 1;
+    return new Response(new ReadableStream({
+      start(controller) {
+        controller.enqueue(bytes.slice(0, split));
+        controller.enqueue(bytes.slice(split, split + 7));
+        controller.enqueue(bytes.slice(split + 7));
+        controller.close();
+      }
+    }), { headers: { "Content-Type": "text/event-stream" } });
+  };
+  try {
+    const request = new Request("https://example.workers.dev/api/reading", {
+      method: "POST", headers: { Origin: origin, "Content-Type": "application/json", Accept: "text/event-stream" },
+      body: JSON.stringify({ messages })
+    });
+    const response = await worker.fetch(request, env);
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get("Content-Type"), /text\/event-stream/);
+    assert.equal(called.stream, true);
+    const text = await response.text();
+    const events = text.trim().split("\n\n").map(line => JSON.parse(line.slice(6)));
+    assert.deepEqual(events, [{ delta: "先写" }, { delta: "下一步。" }, { done: true }]);
+    assert(!text.includes("private thought"));
+    assert(!text.includes("hidden"));
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test("reports an incomplete upstream stream to the browser", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(
+    'data: {"choices":[{"delta":{"content":"只收到一半"}}]}\n\n',
+    { headers: { "Content-Type": "text/event-stream" } }
+  );
+  try {
+    const request = new Request("https://example.workers.dev/api/reading", {
+      method: "POST", headers: { Origin: origin, "Content-Type": "application/json", Accept: "text/event-stream" },
+      body: JSON.stringify({ messages })
+    });
+    const response = await worker.fetch(request, env);
+    assert.match(await response.text(), /AI 回复未完成/);
+  } finally { globalThis.fetch = originalFetch; }
+});
