@@ -1,7 +1,8 @@
-// Cloudflare Workers AI bridge for the public LUNA site.
-// Its free allocation is capped by Cloudflare; no model key goes to the browser.
+// Zhipu GLM bridge for the public LUNA site.
+// ZHIPU_API_KEY is a Cloudflare secret, never sent to browsers.
 const SITE_ORIGIN = "https://mochimo-mo.github.io";
-const MODEL = "@cf/qwen/qwen3-30b-a3b-fp8";
+const MODEL = "glm-4.7-flash";
+const UPSTREAM = "https://open.bigmodel.cn/api/paas/v4/chat/completions";
 const SYSTEM_PROMPT = "你是 LUNA 的中文塔罗反思向导。依据用户提供的真实问题、牌位、牌义与正逆位解读，不编造牌或生活事实。塔罗只用于整理思绪，不作确定的未来预言。先回应具体问题，再解释牌面线索，最后给出可选择的小步骤。若没有填写问题，请邀请补充。不要输出思考过程或标签。通常回答 250 到 450 字；重大医疗、法律、财务或安全决定需提醒核对事实并寻求专业帮助。";
 
 const cors = {
@@ -23,7 +24,7 @@ function validMessages(input) {
         typeof message.content !== "string" || !message.content.trim() || message.content.length > 8000) return null;
     total += message.content.length;
   }
-  if (total > 16000) return null;
+  if (total > 16000 || !messages[0].content.startsWith("这次阅读的已知资料：\n阅读类型：")) return null;
   return [{ role: "system", content: SYSTEM_PROMPT }, ...messages];
 }
 
@@ -47,13 +48,26 @@ export default {
     } catch { return json({ error: "无效的请求。" }, 400); }
     const messages = validMessages(body?.messages);
     if (!messages) return json({ error: "请先完成抽牌，再提出简短的问题。" }, 400);
+    if (!env.ZHIPU_API_KEY) return json({ error: "本站 AI 尚未配置完成。" }, 503);
     try {
-      const result = await env.AI.run(MODEL, { messages, max_tokens: 800, temperature: 0.6 });
-      const answer = result?.response || result?.choices?.[0]?.message?.content;
-      if (typeof answer !== "string" || !answer.trim()) return json({ error: "AI 暂时没有回答，请稍后重试。" }, 503);
-      return json({ choices: [{ message: { role: "assistant", content: answer.trim() } }] });
+      const response = await fetch(UPSTREAM, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.ZHIPU_API_KEY}` },
+        body: JSON.stringify({ model: MODEL, messages, max_tokens: 2048, temperature: 0.6, stream: false }),
+        signal: AbortSignal.timeout(55000)
+      });
+      if (!response.ok) {
+        if (response.status === 429) return json({ error: "智谱当前限流或免费额度已用完，请稍后重试。" }, 429);
+        if (response.status === 401 || response.status === 403) return json({ error: "本站的智谱服务密钥暂不可用。" }, 503);
+        return json({ error: "智谱模型暂不可用，请稍后重试。" }, 503);
+      }
+      const result = await response.json();
+      const content = result?.choices?.[0]?.message?.content;
+      const answer = typeof content === "string" ? content.replace(/<think>[\s\S]*?<\/think>/g, "").trim() : "";
+      if (!answer) return json({ error: "AI 暂时没有回答，请稍后重试。" }, 503);
+      return json({ choices: [{ message: { role: "assistant", content: answer } }] });
     } catch {
-      return json({ error: "免费 AI 额度或服务暂时不可用，请稍后重试。" }, 503);
+      return json({ error: "智谱模型连接超时或暂不可用，请稍后重试。" }, 503);
     }
   }
 };

@@ -3,7 +3,7 @@
   "name": "luna-tarot-ai",
   "main": "src/index.js",
   "compatibility_date": "2026-09-30",
-  "ai": { "binding": "AI" },
+  "secrets": { "required": ["ZHIPU_API_KEY"] },
   "ratelimits": [
     {
       "name": "AI_RATE_LIMIT",
