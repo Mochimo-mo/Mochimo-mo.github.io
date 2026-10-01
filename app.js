@@ -2,6 +2,8 @@
   const app = document.getElementById("app");
   const RECORDS_KEY = "luna-readings-v1";
   const DAILY_KEY = "luna-daily-v1";
+  const CRYSTALS_KEY = "luna-crystals-v1";
+  const CRYSTAL_MAX = 5;
   const AI_SETTINGS_KEY = "luna-ai-settings-v1";
   const API_KEY_STORE = "luna-user-api-key-v1";
   const SITE_AI_ENDPOINT = "https://luna-tarot-ai.qiutingqian.workers.dev/api/reading";
@@ -135,6 +137,22 @@
   const writeStore = (key, value) => {
     try { localStorage.setItem(key, JSON.stringify(value)); return true; } catch { return false; }
   };
+  const crystalWallet = () => {
+    const saved=readStore(CRYSTALS_KEY,{});
+    return {
+      balance:Number.isInteger(saved?.balance)?Math.max(0,Math.min(CRYSTAL_MAX,saved.balance)):0,
+      claimedDate:typeof saved?.claimedDate==="string"?saved.claimedDate:"",
+      dropDate:typeof saved?.dropDate==="string"?saved.dropDate:"",
+      checkedIds:Array.isArray(saved?.checkedIds)?saved.checkedIds.filter(id=>typeof id==="string").slice(-100):[]
+    };
+  };
+  const saveCrystalWallet = wallet => writeStore(CRYSTALS_KEY,wallet);
+  const claimDailyCrystal = () => {
+    const wallet=crystalWallet();
+    if(wallet.claimedDate===dateKey()) return false;
+    const next={...wallet,claimedDate:dateKey(),balance:Math.min(CRYSTAL_MAX,wallet.balance+1)};
+    return saveCrystalWallet(next) && next.balance>wallet.balance;
+  };
   const readAiSettings = () => {
     const saved=readStore(AI_SETTINGS_KEY,{});
     const provider=["zhipu","custom"].includes(saved?.provider)?saved.provider:"zhipu";
@@ -255,11 +273,12 @@
   </main>`);
   const modeCard = (mode, icon, count, title, description) => `<button type="button" class="mode-card" data-action="mode" data-mode="${mode}">
     <span class="mode-card-top"><span class="mode-icon" aria-hidden="true">${icon}</span><span class="mode-count">${count}</span></span>
-    <span class="mode-copy"><strong>${title}</strong><small>${description}</small></span><span class="mode-arrow">${arrow("right")}</span>
+    <span class="mode-copy"><strong>${title}</strong><small>${description}</small><span class="mode-cost">${mode==="daily"?"今日免费":"✧ 消耗 1 颗水晶"}</span></span><span class="mode-arrow">${arrow("right")}</span>
   </button>`;
   const modes = () => {
     const saved=readStore(DAILY_KEY,null);
     const dailyDone=saved?.date===dateKey() && records().some(r=>r.id===saved.id);
+    const wallet=crystalWallet();
     return shell(`<main class="page modes-page">
       <button type="button" class="back-link modes-back" data-action="modes-back">${arrow("left")} 返回水晶球</button>
       <section class="modes-intro" aria-labelledby="modes-title">
@@ -267,13 +286,14 @@
         <h1 id="modes-title" tabindex="-1">今天想怎样抽牌？</h1>
         <p>跟着直觉选一种方式。问题可以稍后再写，也可以留空。</p>
       </section>
+      <div class="crystal-wallet" role="status" aria-live="polite"><svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="M8 5.5h16L29 14 16 27 3 14 8 5.5Z"/><path d="M3 14h26M8 5.5 13 14l3 13 3-13 5-8.5"/></svg><div><strong>灵感水晶 <span>${wallet.balance}/${CRYSTAL_MAX}</span></strong><p>每天首次打开 +1；今日一牌免费，其他占卜每次 1 颗。</p></div></div>
       <div class="mode-grid" role="group" aria-label="占卜方式">
         ${modeCard("daily","☼","每日 · 1 张","今日一牌",dailyDone?"今天已抽过，点此回看。":"给今天一个观察自己的角度。")}
         ${modeCard("decision","⚖","决定 · 3 张","理清一个决定","看看需要、遗漏与提醒。")}
         ${modeCard("three","☾","时序 · 3 张","三张牌","过去、现在，以及下一步。")}
         ${modeCard("single","✦","自由 · 1 张","自由抽一张","带着问题，或只是凭直觉。")}
       </div>
-      <p class="modes-note">78 张猫咪塔罗 · 阅读仅供自我探索</p>
+      <p class="modes-note">完成新占卜有 20% 概率掉落 1 颗，每天最多 1 颗 · 水晶保存在当前浏览器</p>
     </main>`);
   };
   const intent = () => {
@@ -429,6 +449,7 @@
       <div class="result-head"><p class="eyebrow">${spread.eyebrow} · YOUR READING</p><h1>${spread.title}</h1>
         ${r.question?`<p class="result-question">“${esc(r.question)}”</p>`:""}
         <p class="result-date">${dateLabel(r.createdAt)}</p>
+        ${r.crystalRewarded?'<p class="crystal-result-reward">✧ 水晶掉落 · 本次获得 1 颗灵感水晶</p>':""}
         ${verdict?`<div class="decision-verdict" role="status"><span>这次牌面的结论</span><strong>${esc(verdict.title)}</strong><p>${esc(verdict.reason)}</p></div>`:""}
       </div>
       <section class="result-cards" aria-label="这次抽到的牌">${cards.map((card,i)=>`<button class="result-card" data-action="inspect-card" data-index="${i}" aria-label="放大查看${esc(card.cn)}，${orientationName(orientationAt(r,i))}">${face(card, cards.length>1, orientationAt(r,i))}<span class="position-label">${i+1}. ${esc(spread.positions[i])} · ${orientationName(orientationAt(r,i))}</span></button>`).join("")}</section>
@@ -566,11 +587,13 @@
   }
   function navigate(view, replace=false) {
     clearTimeout(shuffleTimer);
+    const claimed=view==="modes" && claimDailyCrystal();
     state.toast=""; state.view=view;
     if(["home","modes","journal","calendar","settings"].includes(view)) history[replace||location.hash===`#${view}`?"replaceState":"pushState"]({view},"",`#${view}`);
     else if(view==="result"&&state.record) history.pushState({view,id:state.record.id},"",`#reading/${encodeURIComponent(state.record.id)}`);
     window.scrollTo(0,0); render();
     if(view==="modes") app.querySelector("#modes-title")?.focus({preventScroll:true});
+    if(claimed) flash("今日获得 1 颗灵感水晶。");
   }
   function persist(record) {
     const list=records();
@@ -578,21 +601,43 @@
     if(i>=0) list[i]=record; else list.unshift(record);
     return writeStore(RECORDS_KEY,list.slice(0,100));
   }
+  function settleCrystalDrop(record) {
+    if(!record?.crystalDropEligible || record.crystalDropChecked) return false;
+    const wallet=crystalWallet();
+    if(wallet.checkedIds.includes(record.id)) {
+      record.crystalDropChecked=true;
+      persist(record);
+      return false;
+    }
+    const dropped=wallet.dropDate!==dateKey() && wallet.balance<CRYSTAL_MAX && randomInt(5)===0;
+    const next={...wallet,
+      balance:wallet.balance+(dropped?1:0),
+      dropDate:dropped?dateKey():wallet.dropDate,
+      checkedIds:[...wallet.checkedIds,record.id].slice(-100)
+    };
+    if(!saveCrystalWallet(next)) return false;
+    record.crystalDropChecked=true;
+    record.crystalRewarded=dropped;
+    persist(record);
+    return dropped;
+  }
   function buildRecord() {
     if(state.record) return state.record;
     state.record={id:crypto?.randomUUID?.() || String(Date.now())+"-"+Math.random().toString(36).slice(2),
-      spread:state.mode,question:state.question.trim(),cards:[...state.chosen],orientations:[...state.orientations],createdAt:Date.now(),note:""};
+      spread:state.mode,question:state.question.trim(),cards:[...state.chosen],orientations:[...state.orientations],createdAt:Date.now(),note:"",crystalDropEligible:true};
     return state.record;
   }
   function startMode(mode) {
-    if (!SPREADS[mode]) return;
+    if (!SPREADS[mode]) return false;
+    const claimed=claimDailyCrystal();
     if (mode==="daily") {
       const saved=readStore(DAILY_KEY,null);
       if (saved?.date===dateKey()) {
         const found=records().find(r=>r.id===saved.id);
-        if (found) {state.mode="daily";state.record=found;state.resultBack="home";state.view="result";window.scrollTo(0,0);render();return;}
+        if (found) {const dropped=settleCrystalDrop(found);state.mode="daily";state.record=found;state.resultBack="home";state.view="result";window.scrollTo(0,0);render();if(dropped) flash(`水晶掉落！+1 · 现在有 ${crystalWallet().balance}/${CRYSTAL_MAX} 颗。`);else if(claimed) flash("今日获得 1 颗灵感水晶。");return true;}
       }
     }
+    if(mode!=="daily" && crystalWallet().balance<1) {flash("水晶不足。明天首次打开会再获得 1 颗；今日一牌仍可免费抽。");return false;}
     artPreloads.clear();
     cardExports.clear();
     readingExports.clear();
@@ -600,6 +645,8 @@
     state.mode=mode;state.question="";state.deck=shuffledCards();state.chosen=[];state.orientations=[];state.record=null;state.fanScroll=0;state.shuffling=false;
     state.view=mode==="daily"?"shuffle":"intent";
     window.scrollTo(0,0);render();
+    if(claimed) flash("今日获得 1 颗灵感水晶。");
+    return true;
   }
   function choose(index) {
     if(state.view!=="select"||!Number.isInteger(index)||index<0||index>=18) return false;
@@ -622,18 +669,37 @@
   }
   function showResult() {
     const r=buildRecord();
+    let charged=false;
+    if(r.spread!=="daily" && !r.crystalSpent) {
+      const wallet=crystalWallet();
+      if(wallet.balance<1) return flash("水晶不足，请明天领取后再完成这次占卜。");
+      if(!saveCrystalWallet({...wallet,balance:wallet.balance-1})) return flash("无法保存水晶余额，请检查浏览器存储设置。");
+      r.crystalSpent=true;
+      charged=true;
+    }
     const saved=persist(r);
+    if(!saved && charged) {
+      const wallet=crystalWallet();
+      const refunded=saveCrystalWallet({...wallet,balance:Math.min(CRYSTAL_MAX,wallet.balance+1)});
+      r.crystalSpent=false;
+      return flash(refunded?"无法保存本次占卜，水晶已退回，请检查浏览器存储设置。":"无法保存本次占卜或水晶余额，请检查浏览器存储设置。");
+    }
+    const dropped=saved && settleCrystalDrop(r);
     state.resultBack="home";state.view="result";
     history.pushState({view:"result",id:r.id},"",`#reading/${encodeURIComponent(r.id)}`);
     window.scrollTo(0,0);render();
     if(!saved) flash("浏览器无法保存记录，请检查存储设置。");
+    else if(dropped) flash(`${charged?"本次消耗 1 颗 · ":""}水晶掉落 +1 · 现在有 ${crystalWallet().balance}/${CRYSTAL_MAX} 颗。`);
+    else if(charged) flash(`本次消耗 1 颗水晶 · 剩余 ${crystalWallet().balance}/${CRYSTAL_MAX} 颗。`);
   }
   function openRecord(id) {
     const found=records().find(r=>r.id===id);
     if (!found) return flash("找不到这次阅读。");
+    const dropped=settleCrystalDrop(found);
     state.record=found;state.mode=found.spread;state.resultBack=state.view==="calendar"?"calendar":"journal";state.view="result";
     history.pushState({view:"result",id},"",`#reading/${encodeURIComponent(id)}`);
     window.scrollTo(0,0);render();
+    if(dropped) flash(`水晶掉落！+1 · 现在有 ${crystalWallet().balance}/${CRYSTAL_MAX} 颗。`);
   }
   const cardReadingText = (r,index,card) =>
     `${card.cn} · ${orientationName(orientationAt(r,index))}\n${SPREADS[r.spread].positions[index]}\n${meaningFor(card,orientationAt(r,index))}`;
@@ -1093,7 +1159,7 @@
   });
   window.addEventListener("popstate",()=>{
     const hash=decodeURIComponent(location.hash);
-    if(hash==="#modes") {state.view="modes";render();}
+    if(hash==="#modes") {const claimed=claimDailyCrystal();state.view="modes";render();if(claimed) flash("今日获得 1 颗灵感水晶。");}
     else if(hash==="#calendar") {state.view="calendar";render();}
     else if(hash==="#journal") {state.view="journal";render();}
     else if(hash==="#settings") {state.view="settings";render();}
@@ -1112,7 +1178,9 @@
     const found=records().find(r=>r.id===initial.slice(9));
     if(found){state.record=found;state.mode=found.spread;state.resultBack="home";state.view="result";}
   }
+  const claimedOnLoad=claimDailyCrystal();
   render();
+  if(claimedOnLoad) flash("今日获得 1 颗灵感水晶。");
 
   if("serviceWorker" in navigator && location.protocol==="https:") {
     navigator.serviceWorker.register("./sw.js?v=20261001-2",{scope:"./"}).catch(()=>{});
@@ -1128,7 +1196,7 @@
       annotations:{readOnlyHint:false,untrustedContentHint:false},
       execute(input) {
         if(!input || !SPREADS[input.spread]) throw new Error("Choose a valid spread.");
-        startMode(input.spread);
+        if(!startMode(input.spread)) throw new Error("Crystal balance is empty for this reading; the daily card remains free.");
         return {stage:state.view,spread:input.spread,requiredCards:SPREADS[input.spread].count};
       }
     })).catch(()=>{});
