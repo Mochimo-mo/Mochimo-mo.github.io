@@ -8,7 +8,6 @@
   const AI_PRESETS = {
     zhipu:{name:"智谱 GLM-4.7-Flash"}
   };
-  const THEME_KEY = "luna-display-theme-v1";
   const state = {
     view:"home", mode:null, question:"", deck:[], chosen:[], orientations:[], fanScroll:0,
     shuffling:false, revealIndex:0, flipped:false, record:null, resultBack:"home", settingsBack:"home", toast:"", aiBusy:false
@@ -164,15 +163,6 @@
     sessionStorage.removeItem(`${API_KEY_STORE}-modelscope`);
     localStorage.removeItem(`${API_KEY_STORE}-modelscope`);
   } catch {}
-  const themeChoice = () => {
-    try {const choice=localStorage.getItem(THEME_KEY);return choice==="light"||choice==="dark"?choice:"system";} catch {return "system";}
-  };
-  const applyTheme = choice => {
-    if(choice==="light"||choice==="dark") document.documentElement.dataset.theme=choice;
-    else delete document.documentElement.dataset.theme;
-    try {localStorage.setItem(THEME_KEY,choice);} catch {}
-  };
-  applyTheme(themeChoice());
   const records = () => {
     const value = readStore(RECORDS_KEY, []);
     return Array.isArray(value) ? value : [];
@@ -223,7 +213,17 @@
     [["home","首页"],["journal","我的记录"],["settings","设置"]].map(([action,label]) =>
       '<button type="button" data-action="'+action+'"'+(state.view===action||(action==="home"&&state.view==="modes")?' aria-current="page"':"")+'>'+
       bottomIcon(action)+'<span>'+label+'</span></button>').join("")+'</nav>';
-  const shell = (content, immersive=false) => `<div class="app-shell${immersive?" is-immersive":""}">${header(immersive)}${content}${immersive?"":(state.view==="home"?"":footer())+bottomNav()}${state.toast?`<div class="toast" role="status">${esc(state.toast)}</div>`:""}</div>`;
+  const starfield = (() => {
+    let seed=20261001;
+    const random=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};
+    return `<div class="starfield" aria-hidden="true">${Array.from({length:70},(_,i)=>{
+      const x=(random()*100).toFixed(2), y=(random()*100).toFixed(2);
+      const size=i%13===0?3.5:i%5===0?2.3:1.4;
+      const duration=(2.8+random()*4.6).toFixed(2), delay=(random()*7).toFixed(2);
+      return `<i style="--x:${x}%;--y:${y}%;--size:${size}px;--duration:${duration}s;--delay:-${delay}s"></i>`;
+    }).join("")}</div>`;
+  })();
+  const shell = (content, immersive=false) => `<div class="app-shell${immersive?" is-immersive":""}">${starfield}${header(immersive)}${content}${immersive?"":(state.view==="home"?"":footer())+bottomNav()}${state.toast?`<div class="toast" role="status">${esc(state.toast)}</div>`:""}</div>`;
   const home = () => shell(`<main class="page home-landing">
     <section class="home-stage" aria-labelledby="home-title">
       <div class="home-copy">
@@ -374,24 +374,17 @@
       <button class="primary ai-start" data-action="ai-start" ${aiMessages(reading).length?"hidden":""}>结合这次牌面开始解读 ${arrow()}</button>
       <div class="ai-suggestions"><span>你也可以问</span><button type="button" data-action="ai-suggest" data-prompt="结合这次牌面，我接下来可以做哪三件具体的小事？">接下来怎么做？</button><button type="button" data-action="ai-suggest" data-prompt="这次牌面提醒我在行动前先确认什么？">先确认什么？</button></div>
       <label for="ai-question" class="ai-label">继续问一个问题</label><textarea id="ai-question" maxlength="1000" rows="3" placeholder="例如：如果我想试着迈出一步，先从哪里开始？"></textarea>
-      <div class="ai-controls"><button class="secondary" data-action="ai-send">发送问题 ${arrow()}</button><button class="text-link" data-action="settings">AI 与主题设置</button></div>
+      <div class="ai-controls"><button class="secondary" data-action="ai-send">发送问题 ${arrow()}</button><button class="text-link" data-action="settings">AI 设置</button></div>
       <p class="ai-status" id="ai-status" role="status" aria-live="polite"></p>
       <p class="ai-privacy">点击解读或发送后，这次的问题、牌面和对话会发送至你选择的 AI 服务。本站的对话记录保存在当前浏览器；服务方按其政策处理收到的内容。${privacyTip}</p>
     </section>`;
   };
   const settingsPage = () => {
-    const ai=readAiSettings(), theme=themeChoice();
+    const ai=readAiSettings();
     return shell(`<main class="page settings-page">
       <button class="back-link" data-action="settings-back">${arrow("left")} 返回${state.settingsBack==="result"?"阅读":state.settingsBack==="journal"?"我的记录":"首页"}</button>
-      <div class="settings-head"><p class="eyebrow">MAKE IT YOURS</p><h1>偏好与 AI</h1><p>选择阅读时的外观，以及解读和追问使用的 AI 服务。</p></div>
-      <section class="settings-panel" aria-labelledby="theme-title"><p class="eyebrow">01 / APPEARANCE</p><h2 id="theme-title">页面主题</h2>
-        <div class="choice-group" role="radiogroup" aria-label="页面主题">
-          <label><input type="radio" name="theme-choice" value="system" ${theme==="system"?"checked":""}><span>跟随系统<small>随设备的明暗模式变化</small></span></label>
-          <label><input type="radio" name="theme-choice" value="light" ${theme==="light"?"checked":""}><span>奶油浅色<small>始终使用浅色</small></span></label>
-          <label><input type="radio" name="theme-choice" value="dark" ${theme==="dark"?"checked":""}><span>深色<small>始终使用深色</small></span></label>
-        </div>
-      </section>
-      <section class="settings-panel" aria-labelledby="provider-title"><p class="eyebrow">02 / AI PROVIDER</p><h2 id="provider-title">解读服务</h2>
+      <div class="settings-head"><p class="eyebrow">AI SETTINGS</p><h1>AI 设置</h1><p>选择解读和追问使用的 AI 服务。</p></div>
+      <section class="settings-panel" aria-labelledby="provider-title"><p class="eyebrow">AI PROVIDER</p><h2 id="provider-title">解读服务</h2>
         <div class="choice-group provider-choices" role="radiogroup" aria-label="AI 服务">
           <label><input type="radio" name="ai-provider" value="zhipu" ${ai.provider==="zhipu"?"checked":""}><span>智谱 GLM-4.7-Flash<small>本站默认提供 · 无需 API Key</small></span></label>
           <label><input type="radio" name="ai-provider" value="custom" ${ai.provider==="custom"?"checked":""}><span>我的 API<small>连接 OpenAI 兼容的聊天接口</small></span></label>
@@ -491,7 +484,7 @@
     if (state.view==="select") app.querySelector(".fan").scrollLeft=state.fanScroll;
     if (state.view==="home") document.title="LUNA · 给思绪一点空间";
     else if (state.view==="modes") document.title="选择占卜方式 · LUNA";
-    else document.title=`${state.view==="journal"?"我的塔罗日志":state.view==="result"?"我的阅读":state.view==="settings"?"偏好与 AI":SPREADS[state.mode]?.title||"抽牌"} · LUNA`;
+    else document.title=`${state.view==="journal"?"我的塔罗日志":state.view==="result"?"我的阅读":state.view==="settings"?"AI 设置":SPREADS[state.mode]?.title||"抽牌"} · LUNA`;
   }
   function watchArt(image) {
     if(!image) return;
@@ -940,7 +933,6 @@
     if(event.target.id==="question") state.question=event.target.value;
   });
   app.addEventListener("change",event=>{
-    if(event.target.name==="theme-choice") applyTheme(event.target.value);
     if(event.target.name==="ai-provider") {
       const provider=event.target.value;
       app.querySelector("#custom-api").hidden=provider!=="custom";
