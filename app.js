@@ -205,13 +205,22 @@
   </div>`;
   const header = immersive => `<header class="site-header">
     <button class="brand" data-action="home" aria-label="返回 LUNA 首页"><span class="brand-mark" aria-hidden="true">☾</span><span class="brand-name">LUNA</span></button>
-    <nav class="header-actions" aria-label="主导航">${immersive
+    <nav class="header-actions${immersive?" is-immersive":""}" aria-label="主导航">${immersive
       ? `<span class="header-step">${esc(state.mode ? SPREADS[state.mode].eyebrow : "A QUIET SPACE")}</span><button class="nav-link" data-action="home">退出牌桌</button><button class="nav-link" data-action="settings">设置</button>`
       : `<button class="nav-link" data-action="home" ${state.view==="home"?'aria-current="page"':""}>首页</button><button class="nav-link" data-action="journal" ${state.view==="journal"?'aria-current="page"':""}>我的记录</button><button class="nav-link" data-action="settings" ${state.view==="settings"?'aria-current="page"':""}>设置</button>`
     }</nav>
   </header>`;
   const footer = () => `<footer class="site-footer"><span>© LUNA · 给思绪一点空间</span><span>塔罗用于自我探索，不替代专业建议。</span></footer>`;
-  const shell = (content, immersive=false) => `<div class="app-shell">${header(immersive)}${content}${immersive?"":footer()}${state.toast?`<div class="toast" role="status">${esc(state.toast)}</div>`:""}</div>`;
+  const bottomIcon = name => ({
+    home:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"/></svg>',
+    journal:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 3v18m4-13h5m-5 4h5"/></svg>',
+    settings:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M4 17h16M9 4v6m6 4v6"/><circle cx="9" cy="7" r="2" fill="var(--panel)"/><circle cx="15" cy="17" r="2" fill="var(--panel)"/></svg>'
+  })[name];
+  const bottomNav = () => '<nav class="bottom-nav" aria-label="底部导航">' +
+    [["home","首页"],["journal","我的记录"],["settings","设置"]].map(([action,label]) =>
+      '<button type="button" data-action="'+action+'"'+(state.view===action?' aria-current="page"':"")+'>'+
+      bottomIcon(action)+'<span>'+label+'</span></button>').join("")+'</nav>';
+  const shell = (content, immersive=false) => `<div class="app-shell${immersive?" is-immersive":""}">${header(immersive)}${content}${immersive?"":footer()+bottomNav()}${state.toast?`<div class="toast" role="status">${esc(state.toast)}</div>`:""}</div>`;
   const home = () => shell(`<main class="page home">
     <section class="hero" aria-labelledby="home-title">
       <div class="hero-copy">
