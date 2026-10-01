@@ -231,7 +231,13 @@
         <h1 id="home-title">有些问题，<br>不需要马上<br><em>找到答案。</em></h1>
         <p class="hero-text">选一种方式抽牌。看看此刻的感受，在阅读中为自己的想法留一点空间。</p>
       </div>
-      <div class="hero-art" aria-hidden="true"><span class="hero-orbit one">✧</span><div class="hero-back"></div><span class="hero-orbit two">✦</span></div>
+      <div class="hero-art" aria-hidden="true">
+        <span class="hero-orbit one">✧</span><span class="hero-orbit two">✦</span><span class="hero-orbit three">✧</span>
+        <div class="hero-figure">
+          <picture><source srcset="./assets/hero-cat-oracle.avif" type="image/avif"><img src="./assets/hero-cat-oracle.webp" width="1024" height="1024" alt="" decoding="async" fetchpriority="high"></picture>
+          <span class="hero-crystal-light"></span>
+        </div>
+      </div>
     </section>
     <section aria-labelledby="choose-title">
       <div class="section-heading"><span>01 / THE TABLE</span><h2 id="choose-title">今天，你想从哪里开始？</h2></div>
