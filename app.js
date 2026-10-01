@@ -204,12 +204,16 @@
     }</nav>
   </header>`;
   const footer = () => `<footer class="site-footer"><span>© LUNA · 给思绪一点空间</span><span>塔罗用于自我探索，不替代专业建议。</span></footer>`;
-  const bottomIcon = name => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.6 10.2 5.2 4.3l4.1 2.5a8 8 0 0 1 5.4 0l4.1-2.5.6 5.9c1.1 1.2 1.7 2.8 1.7 4.4 0 4.5-3.9 7.4-9.1 7.4s-9.1-2.9-9.1-7.4c0-1.6.6-3.2 1.7-4.4Z"/>${({
-    home:'<circle cx="9" cy="14.5" r=".65" fill="currentColor" stroke="none"/><circle cx="15" cy="14.5" r=".65" fill="currentColor" stroke="none"/><path d="m11 17 1 .7 1-.7m-1 .7v1.1m0 0c-.6.6-1.2.8-1.7.5m1.7-.5c.6.6 1.2.8 1.7.5"/>',
-    calendar:'<rect x="7.7" y="12.6" width="8.6" height="6.5" rx=".9"/><path d="M7.8 15h8.4m-5.8-3.5v2.1m3.2-2.1v2.1"/><circle cx="10.1" cy="17.1" r=".55" fill="currentColor" stroke="none"/>',
-    journal:'<path d="M7.8 13.5c1.6-.5 3-.2 4.2.7 1.2-.9 2.6-1.2 4.2-.7v4.6c-1.6-.3-3 .1-4.2.9-1.2-.8-2.6-1.2-4.2-.9v-4.6Zm4.2.7V19"/>',
-    settings:'<path d="M8 14h8m-8 4h8"/><circle cx="10" cy="14" r="1.25" fill="var(--panel)"/><circle cx="14" cy="18" r="1.25" fill="var(--panel)"/>'
-  })[name]}</svg>`;
+  const bottomIcon = name => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+    <path d="M4.1 10.7 4.8 4.5q.1-.8.8-.3l3.7 2.7a8.5 8.5 0 0 1 5.5 0l3.7-2.8q.7-.5.9.4l.5 6.3c1 1.2 1.5 2.6 1.5 4.2-.1 4.3-3.7 7.2-9.2 7.2S3 19.3 3 15c0-1.6.4-3.1 1.1-4.3Z"/>
+    <path d="m6.4 7.2-.2 1.8m11.6-1.9.2 1.8M5.4 16.4l-2.8-.7m2.9 2-2.6.7m15.6-2 2.8-.7m-2.9 2 2.6.7" stroke-width="1.15" opacity=".72"/>
+    ${({
+      home:'<path d="M7.5 13.7q1.4-1.5 2.8 0m3.4-.1q1.4-1.5 2.8.1m-5.7 3.5q1.2 1.7 2.5 0"/><path d="m11.4 16.2.6.4.6-.4" stroke-width="1.1"/>',
+      calendar:'<path d="m7.8 11.7 1.6-.4m5.3 0 1.6.4" stroke-width="1.1"/><circle cx="8.9" cy="13.9" r=".85" fill="currentColor" stroke="none"/><circle cx="15.1" cy="13.8" r=".85" fill="currentColor" stroke="none"/><ellipse cx="12" cy="17.5" rx=".8" ry="1.05"/>',
+      journal:'<path d="M7.6 13.8q1.3 1.3 2.8.1m3.2 0q1.5 1.2 2.8-.2m-5.9 3.8q1.5 1.1 3 0"/><path d="m11.4 16.5.6.3.6-.3" stroke-width="1.1"/>',
+      settings:'<path d="M7.6 14q1.4-1.3 2.8 0"/><circle cx="15.3" cy="13.8" r=".9" fill="currentColor" stroke="none"/><path d="m11.4 16.2.6.4.6-.4m-2.2 1.1q1.6 1.9 3.2 0m-1.6 1v.8" stroke-width="1.3"/>'
+    })[name]}
+  </svg>`;
   const bottomNav = () => '<nav class="bottom-nav" aria-label="底部导航">' +
     [["home","首页"],["calendar","占卜日历"],["journal","我的记录"],["settings","设置"]].map(([action,label]) =>
       '<button type="button" data-action="'+action+'"'+(state.view===action||(action==="home"&&state.view==="modes")?' aria-current="page"':"")+'>'+
