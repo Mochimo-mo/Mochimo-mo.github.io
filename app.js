@@ -222,11 +222,15 @@
       const size=i%13===0?3.5:i%5===0?2.3:1.4;
       const duration=(2.8+random()*4.6).toFixed(2), delay=(random()*7).toFixed(2);
       return `<i style="--x:${x}%;--y:${y}%;--size:${size}px;--duration:${duration}s;--delay:-${delay}s"></i>`;
-    }).join("")}${[
-      ["91%","9%","170px","11s","-2s"],
-      ["76%","20%","130px","14s","-8s"],
-      ["105%","-4%","150px","18s","-13s"]
-    ].map(([x,y,length,duration,delay])=>`<span class="meteor" style="--x:${x};--y:${y};--length:${length};--duration:${duration};--delay:${delay}"></span>`).join("")}</div>`;
+    }).join("")}${Array.from({length:34},()=>{
+      const x=(random()*100).toFixed(2);
+      const trail=(20+random()*36).toFixed(0);
+      const size=(2+random()*2.5).toFixed(1);
+      const drift=((random()-.5)*48).toFixed(0);
+      const duration=8+random()*6;
+      const delay=-(random()*duration).toFixed(2);
+      return `<span class="falling-star" style="--x:${x}%;--trail:${trail}px;--size:${size}px;--drift:${drift}px;--duration:${duration.toFixed(2)}s;--delay:${delay}s"></span>`;
+    }).join("")}</div>`;
   })();
   const shell = (content, immersive=false) => `<div class="app-shell${immersive?" is-immersive":""}">${starfield}${header(immersive)}${content}${immersive?"":(state.view==="home"?"":footer())+bottomNav()}${state.toast?`<div class="toast" role="status">${esc(state.toast)}</div>`:""}</div>`;
   const home = () => shell(`<main class="page home-landing">
