@@ -12,6 +12,8 @@
 
 也可以在本目录通过 Wrangler 手动部署：`npx wrangler login`、`npx wrangler secret put ZHIPU_API_KEY`、`npx wrangler deploy`。Wrangler 需 4.36.0 或更新版本。
 
-请求为 `POST /api/reading`，JSON 包含网站现有的 `messages` 数组。Worker 忽略浏览器发送的模型和系统提示词，验证阅读上下文，加入自己的系统提示词，然后转发给智谱。它只允许 `https://mochimo-mo.github.io` 的浏览器跨域请求，并按来源 IP 每分钟限制 4 次。Origin 头可被非浏览器客户端伪造，IP 也可能由多人共享；上线后应监测用量，并视访问量增加更严格的额度保护。
+请求为 `POST /api/reading`，JSON 包含网站现有的 `messages` 数组。Worker 忽略浏览器发送的模型和系统提示词，验证阅读上下文，加入自己的系统提示词，然后转发给智谱。它允许 `https://mochimo-mo.github.io` 和可选 `SITE_ORIGIN` 的浏览器跨域请求，并按来源 IP 每分钟限制 4 次。Origin 头可被非浏览器客户端伪造，IP 也可能由多人共享；上线后应监测用量，并视访问量增加更严格的额度保护。
 
 本目录可运行 `node --test test.mjs`，用模拟的智谱响应检查鉴权、牌面上下文、跨域和限流逻辑。真实 Key 的调用须在 Secret 配置完成后验证。
+
+如果网页迁到自己的服务器域名，在 Worker 的 Variables and Secrets 中新增普通文本变量 `SITE_ORIGIN`，值为新网页的完整来源（例如 `https://tarot.example.com`，末尾不要加 `/`），然后重新部署。Worker 会同时允许这个来源和原 GitHub Pages 来源；不要把 API Key 放在该变量中。

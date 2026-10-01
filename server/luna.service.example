@@ -1,0 +1,21 @@
+[Unit]
+Description=LUNA tarot website and account API
+After=network.target
+
+[Service]
+Type=simple
+User=luna
+Group=luna
+WorkingDirectory=/opt/luna
+EnvironmentFile=/etc/luna/luna.env
+ExecStart=/usr/bin/node /opt/luna/server/index.mjs
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/luna
+
+[Install]
+WantedBy=multi-user.target

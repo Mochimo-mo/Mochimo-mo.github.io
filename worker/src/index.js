@@ -5,14 +5,14 @@ const MODEL = "glm-4.7-flash";
 const UPSTREAM = "https://open.bigmodel.cn/api/paas/v4/chat/completions";
 const SYSTEM_PROMPT = "你是 LUNA 的中文塔罗反思向导。依据用户提供的真实问题、牌位、牌义与正逆位解读，不编造牌或生活事实。塔罗只用于整理思绪，不作确定的未来预言。先回应具体问题，再解释牌面线索，最后给出可选择的小步骤。若没有填写问题，请邀请补充。不要输出思考过程或标签。通常回答 250 到 450 字；重大医疗、法律、财务或安全决定需提醒核对事实并寻求专业帮助。";
 
-const cors = {
-  "Access-Control-Allow-Origin": SITE_ORIGIN,
+const cors = origin => ({
+  "Access-Control-Allow-Origin": origin,
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type",
   "Cache-Control": "no-store",
   Vary: "Origin"
-};
-const json = (data, status = 200) => Response.json(data, { status, headers: cors });
+});
+const json = (data, status = 200, origin = SITE_ORIGIN) => Response.json(data, { status, headers: cors(origin) });
 
 function validMessages(input) {
   if (!Array.isArray(input) || input.length < 2 || input.length > 16) return null;
@@ -28,7 +28,7 @@ function validMessages(input) {
   return [{ role: "system", content: SYSTEM_PROMPT }, ...messages];
 }
 
-function streamAiAnswer(upstream) {
+function streamAiAnswer(upstream, origin) {
   const reader = upstream.body.getReader();
   let cancelled = false;
   const body = new ReadableStream({
@@ -126,31 +126,33 @@ function streamAiAnswer(upstream) {
     }
   });
   return new Response(body, {
-    headers: { ...cors, "Content-Type": "text/event-stream; charset=utf-8", "X-Content-Type-Options": "nosniff" }
+    headers: { ...cors(origin), "Content-Type": "text/event-stream; charset=utf-8", "X-Content-Type-Options": "nosniff" }
   });
 }
 
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    if (url.pathname !== "/api/reading") return json({ error: "Not found" }, 404);
+    const origin=request.headers.get("Origin");
+    const reply=(data,status=200)=>json(data,status,origin||SITE_ORIGIN);
+    if (url.pathname !== "/api/reading") return reply({ error: "Not found" }, 404);
     // Browser CORS is not authentication, but disallows other pages by default.
-    if (request.headers.get("Origin") !== SITE_ORIGIN) return json({ error: "Forbidden" }, 403);
-    if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
-    if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
-    if (!request.headers.get("Content-Type")?.startsWith("application/json")) return json({ error: "JSON required" }, 415);
+    if (origin !== SITE_ORIGIN && (!env.SITE_ORIGIN || origin !== env.SITE_ORIGIN)) return json({ error: "Forbidden" }, 403);
+    if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors(origin) });
+    if (request.method !== "POST") return reply({ error: "Method not allowed" }, 405);
+    if (!request.headers.get("Content-Type")?.startsWith("application/json")) return reply({ error: "JSON required" }, 415);
     const clientIp = request.headers.get("CF-Connecting-IP") || "unknown";
     const { success } = await env.AI_RATE_LIMIT.limit({ key: clientIp });
-    if (!success) return json({ error: "稍等片刻，再继续追问。" }, 429);
+    if (!success) return reply({ error: "稍等片刻，再继续追问。" }, 429);
     let body;
     try {
       const raw = await request.text();
-      if (raw.length > 20000) return json({ error: "问题太长，请缩短后再试。" }, 413);
+      if (raw.length > 20000) return reply({ error: "问题太长，请缩短后再试。" }, 413);
       body = JSON.parse(raw);
-    } catch { return json({ error: "无效的请求。" }, 400); }
+    } catch { return reply({ error: "无效的请求。" }, 400); }
     const messages = validMessages(body?.messages);
-    if (!messages) return json({ error: "请先完成抽牌，再提出简短的问题。" }, 400);
-    if (!env.ZHIPU_API_KEY) return json({ error: "本站 AI 尚未配置完成。" }, 503);
+    if (!messages) return reply({ error: "请先完成抽牌，再提出简短的问题。" }, 400);
+    if (!env.ZHIPU_API_KEY) return reply({ error: "本站 AI 尚未配置完成。" }, 503);
     const wantsStream = request.headers.get("Accept")?.includes("text/event-stream") === true;
     try {
       const response = await fetch(UPSTREAM, {
@@ -160,21 +162,21 @@ export default {
         signal: AbortSignal.timeout(55000)
       });
       if (!response.ok) {
-        if (response.status === 429) return json({ error: "智谱当前限流或免费额度已用完，请稍后重试。" }, 429);
-        if (response.status === 401 || response.status === 403) return json({ error: "本站的智谱服务密钥暂不可用。" }, 503);
-        return json({ error: "智谱模型暂不可用，请稍后重试。" }, 503);
+        if (response.status === 429) return reply({ error: "智谱当前限流或免费额度已用完，请稍后重试。" }, 429);
+        if (response.status === 401 || response.status === 403) return reply({ error: "本站的智谱服务密钥暂不可用。" }, 503);
+        return reply({ error: "智谱模型暂不可用，请稍后重试。" }, 503);
       }
       if (wantsStream) {
-        if (!response.body) return json({ error: "智谱模型暂不可用，请稍后重试。" }, 503);
-        return streamAiAnswer(response);
+        if (!response.body) return reply({ error: "智谱模型暂不可用，请稍后重试。" }, 503);
+        return streamAiAnswer(response,origin);
       }
       const result = await response.json();
       const content = result?.choices?.[0]?.message?.content;
       const answer = typeof content === "string" ? content.replace(/<think>[\s\S]*?<\/think>/g, "").trim() : "";
-      if (!answer) return json({ error: "AI 暂时没有回答，请稍后重试。" }, 503);
-      return json({ choices: [{ message: { role: "assistant", content: answer } }] });
+      if (!answer) return reply({ error: "AI 暂时没有回答，请稍后重试。" }, 503);
+      return reply({ choices: [{ message: { role: "assistant", content: answer } }] });
     } catch {
-      return json({ error: "智谱模型连接超时或暂不可用，请稍后重试。" }, 503);
+      return reply({ error: "智谱模型连接超时或暂不可用，请稍后重试。" }, 503);
     }
   }
 };

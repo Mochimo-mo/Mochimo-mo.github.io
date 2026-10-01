@@ -45,6 +45,10 @@ test("accepts a reading, fixes its own system prompt, and returns an answer", as
 
 test("blocks a different origin and malformed or oversized prompts", async () => {
   assert.equal((await worker.fetch(makeRequest({ messages }, "https://wrong.example"), env)).status, 403);
+  const ownDomain="https://tarot.example.com";
+  const ownPreflight=await worker.fetch(new Request("https://example.workers.dev/api/reading",{method:"OPTIONS",headers:{Origin:ownDomain}}),{...env,SITE_ORIGIN:ownDomain});
+  assert.equal(ownPreflight.status,204);
+  assert.equal(ownPreflight.headers.get("Access-Control-Allow-Origin"),ownDomain);
   assert.equal((await worker.fetch(makeRequest({ messages: [{ role: "user", content: "hello" }] }), env)).status, 400);
   assert.equal((await worker.fetch(makeRequest({ messages: [...messages, { role: "user", content: "a".repeat(8001) }] }), env)).status, 400);
   assert.equal((await worker.fetch(makeRequest({ messages }), { ...env, ZHIPU_API_KEY: "" })).status, 503);

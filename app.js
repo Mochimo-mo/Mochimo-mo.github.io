@@ -12,8 +12,9 @@
   };
   const state = {
     view:"home", mode:null, question:"", deck:[], chosen:[], orientations:[], fanScroll:0,
-    shuffling:false, revealIndex:0, flipped:false, record:null, resultBack:"home", settingsBack:"home", calendarMonth:null, toast:"", aiBusy:false
+    shuffling:false, revealIndex:0, flipped:false, record:null, resultBack:"home", settingsBack:"home", accountBack:"modes", authMode:"register", authPrompt:false, completing:false, calendarMonth:null, toast:"", aiBusy:false
   };
+  const auth = {available:false, account:null, wallet:null, dailyDone:false, checking:true, busy:false};
   let shuffleTimer;
   let toastTimer;
   const artPreloads = new Map();
@@ -148,10 +149,44 @@
   };
   const saveCrystalWallet = wallet => writeStore(CRYSTALS_KEY,wallet);
   const claimDailyCrystal = () => {
+    if(auth.account) return false;
     const wallet=crystalWallet();
     if(wallet.claimedDate===dateKey()) return false;
     const next={...wallet,claimedDate:dateKey(),balance:Math.min(CRYSTAL_MAX,wallet.balance+1)};
     return saveCrystalWallet(next) && next.balance>wallet.balance;
+  };
+  const activeWallet = () => auth.account ? auth.wallet : crystalWallet();
+  const recordKey = () => auth.account ? `${RECORDS_KEY}:${auth.account.id}` : RECORDS_KEY;
+  const dailyKey = () => auth.account ? `${DAILY_KEY}:${auth.account.id}` : DAILY_KEY;
+  const accountRequest = async (path,body) => {
+    const response=await fetch(`./api/${path}`,{
+      method:body===undefined?"GET":"POST",credentials:"same-origin",cache:"no-store",
+      ...(body===undefined?{}:{headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})
+    });
+    if(!response.headers.get("Content-Type")?.includes("application/json")) throw new Error("账户服务暂不可用，请稍后再试。");
+    const data=await response.json();
+    if(!response.ok) {const error=new Error(data.error||"账户服务暂不可用，请稍后再试。");error.status=response.status;throw error;}
+    return data;
+  };
+  const setAccount = data => {
+    auth.account=data.account||null;
+    auth.wallet=data.wallet||null;
+    auth.dailyDone=!!data.dailyDone;
+    auth.available=true;
+    render();
+  };
+  const loadAccount = async () => {
+    try {
+      const data=await accountRequest("session");
+      setAccount(data);
+      const hash=decodeURIComponent(location.hash);
+      if(data.account && hash.startsWith("#reading/")) {
+        const found=records().find(r=>r.id===hash.slice(9));
+        if(found) {state.record=found;state.mode=found.spread;state.resultBack="home";state.view="result";render();}
+      }
+      if(data.granted) flash("今日获得 1 颗灵感水晶。");
+    } catch { auth.available=false; }
+    finally { auth.checking=false; }
   };
   const readAiSettings = () => {
     const saved=readStore(AI_SETTINGS_KEY,{});
@@ -182,7 +217,7 @@
     localStorage.removeItem(`${API_KEY_STORE}-modelscope`);
   } catch {}
   const records = () => {
-    const value = readStore(RECORDS_KEY, []);
+    const value = readStore(recordKey(), []);
     return Array.isArray(value) ? value : [];
   };
   const randomInt = max => {
@@ -276,9 +311,10 @@
     <span class="mode-copy"><strong>${title}</strong><small>${description}</small><span class="mode-cost">${mode==="daily"?"今日免费":"✧ 消耗 1 颗水晶"}</span></span><span class="mode-arrow">${arrow("right")}</span>
   </button>`;
   const modes = () => {
-    const saved=readStore(DAILY_KEY,null);
-    const dailyDone=saved?.date===dateKey() && records().some(r=>r.id===saved.id);
-    const wallet=crystalWallet();
+    const saved=readStore(dailyKey(),null);
+    const localDaily=saved?.date===dateKey() && records().some(r=>r.id===saved.id);
+    const dailyDone=(auth.account&&auth.dailyDone) || localDaily;
+    const wallet=activeWallet();
     return shell(`<main class="page modes-page">
       <button type="button" class="back-link modes-back" data-action="modes-back">${arrow("left")} 返回水晶球</button>
       <section class="modes-intro" aria-labelledby="modes-title">
@@ -286,14 +322,15 @@
         <h1 id="modes-title" tabindex="-1">今天想怎样抽牌？</h1>
         <p>跟着直觉选一种方式。问题可以稍后再写，也可以留空。</p>
       </section>
-      <div class="crystal-wallet" role="status" aria-live="polite"><svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="M8 5.5h16L29 14 16 27 3 14 8 5.5Z"/><path d="M3 14h26M8 5.5 13 14l3 13 3-13 5-8.5"/></svg><div><strong>灵感水晶 <span>${wallet.balance}/${CRYSTAL_MAX}</span></strong><p>每天首次打开 +1；今日一牌免费，其他占卜每次 1 颗。</p></div></div>
+      <div class="crystal-wallet" role="status" aria-live="polite"><svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="M8 5.5h16L29 14 16 27 3 14 8 5.5Z"/><path d="M3 14h26M8 5.5 13 14l3 13 3-13 5-8.5"/></svg><div><strong>灵感水晶 <span>${wallet.balance}/${CRYSTAL_MAX}</span></strong><p>${auth.account?"已登录 · 余额保存在账号":"游客 · 余额保存在当前浏览器"}。每天首次打开 +1；今日一牌免费，其他占卜每次 1 颗。</p></div></div>
+      ${auth.available?`<div class="modes-account"><button type="button" class="text-link" data-action="account" data-auth-mode="login">${auth.account?`账户 · ${esc(auth.account.email)}`:"已有账号？登录"}</button></div>`:""}
       <div class="mode-grid" role="group" aria-label="占卜方式">
-        ${modeCard("daily","☼","每日 · 1 张","今日一牌",dailyDone?"今天已抽过，点此回看。":"给今天一个观察自己的角度。")}
+        ${modeCard("daily","☼","每日 · 1 张","今日一牌",localDaily?"今天已抽过，点此回看。":dailyDone?"今天已在其他设备完成。":"给今天一个观察自己的角度。")}
         ${modeCard("decision","⚖","决定 · 3 张","理清一个决定","看看需要、遗漏与提醒。")}
         ${modeCard("three","☾","时序 · 3 张","三张牌","过去、现在，以及下一步。")}
         ${modeCard("single","✦","自由 · 1 张","自由抽一张","带着问题，或只是凭直觉。")}
       </div>
-      <p class="modes-note">完成新占卜有 20% 概率掉落 1 颗，每天最多 1 颗 · 水晶保存在当前浏览器</p>
+      <p class="modes-note">完成新占卜有 20% 概率掉落 1 颗，每天最多 1 颗 · ${auth.account?"水晶保存在账号；阅读记录仍在本机":"游客水晶保存在当前浏览器"}</p>
     </main>`);
   };
   const intent = () => {
@@ -416,7 +453,11 @@
     const ai=readAiSettings();
     return shell(`<main class="page settings-page">
       <button class="back-link" data-action="settings-back">${arrow("left")} 返回${state.settingsBack==="result"?"阅读":state.settingsBack==="journal"?"我的记录":state.settingsBack==="calendar"?"占卜日历":"首页"}</button>
-      <div class="settings-head"><p class="eyebrow">AI SETTINGS</p><h1>AI 设置</h1><p>选择解读和追问使用的 AI 服务。</p></div>
+      <div class="settings-head"><p class="eyebrow">YOUR SPACE</p><h1>设置</h1><p>管理账户与解读服务。</p></div>
+      <section class="settings-panel account-settings" aria-labelledby="account-settings-title"><p class="eyebrow">ACCOUNT</p><h2 id="account-settings-title">我的账户</h2>
+        <p>${auth.account?`已登录 ${esc(auth.account.email)} · 水晶 ${auth.wallet.balance}/${CRYSTAL_MAX}`:auth.available?"正在以游客身份使用。水晶用完后，可以注册领取 2 颗。":"当前为游客模式。服务器部署完成后可使用注册和登录。"}</p>
+        ${auth.available?`<button class="text-link" data-action="account" data-auth-mode="${auth.account?"login":"register"}">${auth.account?"管理账户":"注册或登录"} ${arrow()}</button>`:""}
+      </section>
       <section class="settings-panel" aria-labelledby="provider-title"><p class="eyebrow">AI PROVIDER</p><h2 id="provider-title">解读服务</h2>
         <div class="choice-group provider-choices" role="radiogroup" aria-label="AI 服务">
           <label><input type="radio" name="ai-provider" value="zhipu" ${ai.provider==="zhipu"?"checked":""}><span>智谱 GLM-4.7-Flash<small>本站默认提供 · 无需 API Key</small></span></label>
@@ -436,6 +477,19 @@
       </section>
     </main>`);
   };
+  const accountPage = () => shell(`<main class="page account-page">
+    <button class="back-link" data-action="account-back">${arrow("left")} 返回${state.accountBack==="settings"?"设置":"占卜方式"}</button>
+    <div class="account-card"><p class="eyebrow">YOUR CRYSTALS</p>
+      ${auth.account?`<h1>欢迎回来</h1><p class="account-lead">${esc(auth.account.email)}</p><div class="account-balance">✧ ${auth.wallet.balance}/${CRYSTAL_MAX} 颗灵感水晶</div><p class="account-hint">余额保存在账号，可在其他设备登录后继续使用。抽牌记录和笔记暂时只保存在这台设备的浏览器。</p><button class="secondary" data-action="logout" ${auth.busy?"disabled":""}>退出登录</button>`:
+        !auth.available?`<h1>先以游客身份探索</h1><p class="account-lead">账号服务尚未启用。服务器部署完成后即可注册和登录。</p>`:
+        `<h1>${state.authMode==="register"?"领取 2 颗水晶":"登录 LUNA"}</h1><p class="account-lead">${state.authPrompt&&state.authMode==="register"?"游客水晶用完啦。注册后立即获得 2 颗，今日一牌仍可免费抽。":state.authMode==="register"?"注册后立即获得 2 颗灵感水晶。":"回到你的账户，继续使用账号里的水晶。"}</p>
+        <div class="auth-switch" role="group" aria-label="账户方式"><button type="button" data-action="auth-tab" data-auth-mode="register" aria-pressed="${state.authMode==="register"}">注册</button><button type="button" data-action="auth-tab" data-auth-mode="login" aria-pressed="${state.authMode==="login"}">登录</button></div>
+        <form id="account-form"><label for="account-email">邮箱</label><input id="account-email" name="email" type="email" autocomplete="email" maxlength="254" required placeholder="you@example.com">
+          <label for="account-password">密码</label><input id="account-password" name="password" type="password" autocomplete="${state.authMode==="register"?"new-password":"current-password"}" minlength="12" maxlength="128" required placeholder="至少 12 位">
+          ${state.authMode==="register"?'<label for="account-confirm">确认密码</label><input id="account-confirm" name="confirm" type="password" autocomplete="new-password" minlength="12" maxlength="128" required placeholder="再次输入密码">':""}
+          <button class="primary" type="submit" ${auth.busy?"disabled":""}>${auth.busy?"正在处理…":state.authMode==="register"?"注册并领取 2 颗":"登录"}</button><p id="account-status" role="status" aria-live="polite"></p>
+        </form><p class="account-hint">注册赠礼每个账号仅一次。账号水晶由服务器记录；阅读和笔记仍只保存在当前浏览器。请妥善保存密码，暂未提供邮件找回。</p>`}
+    </div></main>`);
   const result = () => {
     const r = state.record;
     if (!r || !SPREADS[r.spread]) return home();
@@ -454,6 +508,7 @@
       </div>
       <section class="result-cards" aria-label="这次抽到的牌">${cards.map((card,i)=>`<button class="result-card" data-action="inspect-card" data-index="${i}" aria-label="放大查看${esc(card.cn)}，${orientationName(orientationAt(r,i))}">${face(card, cards.length>1, orientationAt(r,i))}<span class="position-label">${i+1}. ${esc(spread.positions[i])} · ${orientationName(orientationAt(r,i))}</span></button>`).join("")}</section>
       ${cards.length>1?`<p class="cards-scroll-hint" aria-hidden="true">左右滑动，查看全部牌面 ${arrow("right")}</p>`:""}
+      ${auth.available&&!auth.account&&activeWallet().balance===0?'<aside class="crystal-empty-invite"><div><strong>游客水晶用完了</strong><p>这次结果可以继续看。注册即可获得 2 颗水晶，也可以等明天再领取。</p></div><button type="button" class="secondary" data-action="account" data-auth-mode="register">注册领取 2 颗</button></aside>':""}
       <div class="reading-panel">
         <p class="eyebrow">01 / ${verdict?"阅读方式":"一句话解读"}</p><p class="summary">${esc(verdict?"三张牌分别照见你真正看重的、容易遗漏的，以及行动前需要确认的事。":summary(r.spread,cards,r))}</p>
         <p class="reading-note">这是一个思考的角度，而不是对未来的保证。看看哪些文字与你当下的经验相呼应，也允许自己有不同的理解。</p>
@@ -523,7 +578,7 @@
       <p class="calendar-footnote">记录保存在当前浏览器。清除浏览器数据或更换设备后，日历记录可能消失。</p>
     </main>`);
   };
-  const screens = {home,modes,intent,shuffle,select,ready,reveal,result,journal,calendar,settings:settingsPage};
+  const screens = {home,modes,intent,shuffle,select,ready,reveal,result,journal,calendar,settings:settingsPage,account:accountPage};
   function render() {
     app.innerHTML = (screens[state.view]||home)();
     const oracle=app.querySelector(".hero-oracle");
@@ -557,7 +612,7 @@
     if (state.view==="select") app.querySelector(".fan").scrollLeft=state.fanScroll;
     if (state.view==="home") document.title="LUNA · 给思绪一点空间";
     else if (state.view==="modes") document.title="选择占卜方式 · LUNA";
-    else document.title=`${state.view==="calendar"?"占卜日历":state.view==="journal"?"我的塔罗日志":state.view==="result"?"我的阅读":state.view==="settings"?"AI 设置":SPREADS[state.mode]?.title||"抽牌"} · LUNA`;
+    else document.title=`${state.view==="calendar"?"占卜日历":state.view==="journal"?"我的塔罗日志":state.view==="result"?"我的阅读":state.view==="settings"?"设置":state.view==="account"?"账户":SPREADS[state.mode]?.title||"抽牌"} · LUNA`;
   }
   function watchArt(image) {
     if(!image) return;
@@ -589,7 +644,7 @@
     clearTimeout(shuffleTimer);
     const claimed=view==="modes" && claimDailyCrystal();
     state.toast=""; state.view=view;
-    if(["home","modes","journal","calendar","settings"].includes(view)) history[replace||location.hash===`#${view}`?"replaceState":"pushState"]({view},"",`#${view}`);
+    if(["home","modes","journal","calendar","settings","account"].includes(view)) history[replace||location.hash===`#${view}`?"replaceState":"pushState"]({view},"",`#${view}`);
     else if(view==="result"&&state.record) history.pushState({view,id:state.record.id},"",`#reading/${encodeURIComponent(state.record.id)}`);
     window.scrollTo(0,0); render();
     if(view==="modes") app.querySelector("#modes-title")?.focus({preventScroll:true});
@@ -599,10 +654,10 @@
     const list=records();
     const i=list.findIndex(item=>item.id===record.id);
     if(i>=0) list[i]=record; else list.unshift(record);
-    return writeStore(RECORDS_KEY,list.slice(0,100));
+    return writeStore(recordKey(),list.slice(0,100));
   }
   function settleCrystalDrop(record) {
-    if(!record?.crystalDropEligible || record.crystalDropChecked) return false;
+    if(auth.account || !record?.crystalDropEligible || record.crystalDropChecked || record.crystalServerSettled) return false;
     const wallet=crystalWallet();
     if(wallet.checkedIds.includes(record.id)) {
       record.crystalDropChecked=true;
@@ -631,13 +686,18 @@
     if (!SPREADS[mode]) return false;
     const claimed=claimDailyCrystal();
     if (mode==="daily") {
-      const saved=readStore(DAILY_KEY,null);
+      const saved=readStore(dailyKey(),null);
       if (saved?.date===dateKey()) {
         const found=records().find(r=>r.id===saved.id);
-        if (found) {const dropped=settleCrystalDrop(found);state.mode="daily";state.record=found;state.resultBack="home";state.view="result";window.scrollTo(0,0);render();if(dropped) flash(`水晶掉落！+1 · 现在有 ${crystalWallet().balance}/${CRYSTAL_MAX} 颗。`);else if(claimed) flash("今日获得 1 颗灵感水晶。");return true;}
+        if (found) {const dropped=settleCrystalDrop(found);state.mode="daily";state.record=found;state.resultBack="home";state.view="result";window.scrollTo(0,0);render();if(dropped) flash(`水晶掉落！+1 · 现在有 ${activeWallet().balance}/${CRYSTAL_MAX} 颗。`);else if(claimed) flash("今日获得 1 颗灵感水晶。");return true;}
       }
+      if(auth.account && auth.dailyDone) {flash("今天的每日一牌已在其他设备完成，记录暂留在原设备。");return false;}
     }
-    if(mode!=="daily" && crystalWallet().balance<1) {flash("水晶不足。明天首次打开会再获得 1 颗；今日一牌仍可免费抽。");return false;}
+    if(mode!=="daily" && activeWallet().balance<1) {
+      if(auth.available && !auth.account) {state.accountBack="modes";state.authMode="register";state.authPrompt=true;navigate("account");}
+      else flash("水晶不足。明天首次打开会再获得 1 颗；今日一牌仍可免费抽。");
+      return false;
+    }
     artPreloads.clear();
     cardExports.clear();
     readingExports.clear();
@@ -659,16 +719,49 @@
     if(navigator.vibrate) navigator.vibrate(8);
     if(state.chosen.length===SPREADS[state.mode].count) {
       state.view="ready";
-      if(state.mode==="daily") {
+      if(state.mode==="daily" && !auth.account) {
         const r=buildRecord();
-        if(persist(r)) writeStore(DAILY_KEY,{date:dateKey(),id:r.id});
+        if(persist(r)) writeStore(dailyKey(),{date:dateKey(),id:r.id});
       }
     }
     render();
     return true;
   }
-  function showResult() {
+  async function showResult() {
+    if(state.completing) return;
     const r=buildRecord();
+    if(auth.account) {
+      const button=app.querySelector('[data-action="reveal-next"]');
+      const label=button?.innerHTML;
+      state.completing=true;
+      if(button) {button.disabled=true;button.textContent="正在保存这次占卜…";}
+      try {
+        if(!writeStore(recordKey(),records())) throw new Error("浏览器无法保存记录，请检查存储设置。");
+        const result=await accountRequest("readings",{id:r.id,spread:r.spread});
+        auth.wallet=result.wallet;
+        if(r.spread==="daily") {auth.dailyDone=true;writeStore(dailyKey(),{date:dateKey(),id:r.id});}
+        r.crystalSpent=result.spent;
+        r.crystalRewarded=result.rewarded;
+        r.crystalDropChecked=true;
+        r.crystalServerSettled=true;
+        r.accountId=auth.account.id;
+        const localSaved=persist(r);
+        state.resultBack="home";state.view="result";
+        history.pushState({view:"result",id:r.id},"",`#reading/${encodeURIComponent(r.id)}`);
+        window.scrollTo(0,0);render();
+        if(!localSaved) flash("占卜已完成，但这台设备未能保存记录。请检查浏览器存储设置。",4200);
+        else if(result.rewarded) flash(`${result.spent?"本次消耗 1 颗 · ":""}水晶掉落 +1 · 现在有 ${result.wallet.balance}/${CRYSTAL_MAX} 颗。`);
+        else if(result.spent) flash(`本次消耗 1 颗水晶 · 剩余 ${result.wallet.balance}/${CRYSTAL_MAX} 颗。`);
+      } catch(error) {
+        flash(error.message||"占卜暂时无法保存，请稍后重试。",4200);
+        if(error.status===402) accountRequest("session").then(setAccount).catch(()=>{});
+        if(error.status===401) loadAccount().then(()=>{state.accountBack="modes";state.authMode="login";navigate("account");});
+      } finally {
+        state.completing=false;
+        if(button?.isConnected) {button.disabled=false;button.innerHTML=label;}
+      }
+      return;
+    }
     let charged=false;
     if(r.spread!=="daily" && !r.crystalSpent) {
       const wallet=crystalWallet();
@@ -689,8 +782,8 @@
     history.pushState({view:"result",id:r.id},"",`#reading/${encodeURIComponent(r.id)}`);
     window.scrollTo(0,0);render();
     if(!saved) flash("浏览器无法保存记录，请检查存储设置。");
-    else if(dropped) flash(`${charged?"本次消耗 1 颗 · ":""}水晶掉落 +1 · 现在有 ${crystalWallet().balance}/${CRYSTAL_MAX} 颗。`);
-    else if(charged) flash(`本次消耗 1 颗水晶 · 剩余 ${crystalWallet().balance}/${CRYSTAL_MAX} 颗。`);
+    else if(dropped) flash(`${charged?"本次消耗 1 颗 · ":""}水晶掉落 +1 · 现在有 ${activeWallet().balance}/${CRYSTAL_MAX} 颗。`);
+    else if(charged) flash(`本次消耗 1 颗水晶 · 剩余 ${activeWallet().balance}/${CRYSTAL_MAX} 颗。`);
   }
   function openRecord(id) {
     const found=records().find(r=>r.id===id);
@@ -699,7 +792,7 @@
     state.record=found;state.mode=found.spread;state.resultBack=state.view==="calendar"?"calendar":"journal";state.view="result";
     history.pushState({view:"result",id},"",`#reading/${encodeURIComponent(id)}`);
     window.scrollTo(0,0);render();
-    if(dropped) flash(`水晶掉落！+1 · 现在有 ${crystalWallet().balance}/${CRYSTAL_MAX} 颗。`);
+    if(dropped) flash(`水晶掉落！+1 · 现在有 ${activeWallet().balance}/${CRYSTAL_MAX} 颗。`);
   }
   const cardReadingText = (r,index,card) =>
     `${card.cn} · ${orientationName(orientationAt(r,index))}\n${SPREADS[r.spread].positions[index]}\n${meaningFor(card,orientationAt(r,index))}`;
@@ -1047,6 +1140,40 @@
     if(status) status.textContent="✓ AI 设置已保存。";
     flash("AI 设置已保存。");
   }
+  async function submitAccount(form) {
+    if(auth.busy || !auth.available) return;
+    const email=form.elements.email.value.trim();
+    const password=form.elements.password.value;
+    const mode=state.authMode;
+    const status=form.querySelector("#account-status");
+    const button=form.querySelector('button[type="submit"]');
+    if(mode==="register" && password!==form.elements.confirm.value) {status.textContent="两次输入的密码不一致。";return;}
+    auth.busy=true;button.disabled=true;button.textContent="正在处理…";
+    try {
+      const data=await accountRequest(mode,{email,password});
+      setAccount(data);
+      state.authPrompt=false;
+      navigate("modes",true);
+      flash(mode==="register"?"注册成功，已获得 2 颗灵感水晶。":data.granted?"登录成功，今日获得 1 颗灵感水晶。":"登录成功，欢迎回来。");
+    } catch(error) {
+      if(status) status.textContent=error.message||"账户服务暂不可用，请稍后再试。";
+      if(button.isConnected) {button.disabled=false;button.textContent=mode==="register"?"注册并领取 2 颗":"登录";}
+    } finally {auth.busy=false;}
+  }
+  async function logoutAccount() {
+    if(auth.busy) return;
+    auth.busy=true;
+    try {
+      await accountRequest("logout",{});
+      setAccount({account:null,wallet:null});
+      navigate("modes",true);
+      flash("已退出登录，当前为游客模式。");
+    } catch(error) {flash(error.message||"退出失败，请稍后重试。");}
+    finally {auth.busy=false;}
+  }
+  app.addEventListener("submit",event=>{
+    if(event.target.id==="account-form") {event.preventDefault();submitAccount(event.target);}
+  });
   app.addEventListener("input",event=>{
     if(event.target.id==="question") state.question=event.target.value;
   });
@@ -1083,6 +1210,10 @@
     else if(action==="journal") navigate("journal");
     else if(action==="settings") {state.settingsBack=["result","journal","calendar"].includes(state.view)?state.view:"home";navigate("settings");}
     else if(action==="settings-back") navigate(state.settingsBack);
+    else if(action==="account") {state.accountBack=state.view==="settings"?"settings":"modes";state.authMode=button.dataset.authMode||"register";state.authPrompt=false;navigate("account");}
+    else if(action==="account-back") navigate(state.accountBack);
+    else if(action==="auth-tab") {state.authMode=button.dataset.authMode;render();}
+    else if(action==="logout") logoutAccount();
     else if(action==="save-settings") saveSettings();
     else if(action==="clear-api-key") {
       saveApiKey("",false,"custom");
@@ -1163,6 +1294,7 @@
     else if(hash==="#calendar") {state.view="calendar";render();}
     else if(hash==="#journal") {state.view="journal";render();}
     else if(hash==="#settings") {state.view="settings";render();}
+    else if(hash==="#account") {state.view="account";render();}
     else if(hash.startsWith("#reading/")) {
       const found=records().find(r=>r.id===hash.slice(9));
       if(found){state.record=found;state.mode=found.spread;state.resultBack="home";state.view="result";render();}
@@ -1174,6 +1306,7 @@
   else if(initial==="#calendar") state.view="calendar";
   else if(initial==="#journal") state.view="journal";
   else if(initial==="#settings") state.view="settings";
+  else if(initial==="#account") state.view="account";
   else if(initial.startsWith("#reading/")) {
     const found=records().find(r=>r.id===initial.slice(9));
     if(found){state.record=found;state.mode=found.spread;state.resultBack="home";state.view="result";}
@@ -1181,6 +1314,7 @@
   const claimedOnLoad=claimDailyCrystal();
   render();
   if(claimedOnLoad) flash("今日获得 1 颗灵感水晶。");
+  loadAccount();
 
   if("serviceWorker" in navigator && location.protocol==="https:") {
     navigator.serviceWorker.register("./sw.js?v=20261001-2",{scope:"./"}).catch(()=>{});

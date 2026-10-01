@@ -1,0 +1,10 @@
+{
+  "name": "luna-tarot-server",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24.15.0" },
+  "scripts": {
+    "start": "node index.mjs",
+    "test": "node --test test.mjs"
+  }
+}
