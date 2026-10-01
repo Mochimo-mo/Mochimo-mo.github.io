@@ -233,8 +233,9 @@
       </div>
       <div class="home-art">
         <div class="hero-figure hero-oracle">
-          <img src="./assets/hero-cat-oracle-cutout.webp" width="1254" height="1254" alt="" loading="eager" decoding="async" fetchpriority="high">
-          <button type="button" class="hero-orb-button" data-action="choose-spread" aria-label="轻触水晶球，选择占卜方式" aria-describedby="home-guidance"><span class="hero-crystal-light" aria-hidden="true"><span class="hero-crystal-star">✦</span></span></button>
+          <img src="./assets/hero-cat-oracle-veil.webp" width="1152" height="1152" alt="" loading="eager" decoding="async" fetchpriority="high">
+          <button type="button" class="hero-orb-button" data-action="choose-spread" aria-label="轻触水晶球，选择占卜方式" aria-describedby="home-guidance"><span class="hero-crystal-light" aria-hidden="true"><span class="hero-orb-dust"></span><span class="hero-crystal-star">✦</span></span></button>
+          <span class="hero-jewel-glints" aria-hidden="true"><i style="--x:29.4%;--y:25.8%;--delay:-.6s"></i><i style="--x:55%;--y:29.8%;--delay:-2.2s"></i><i style="--x:50.1%;--y:48.7%;--delay:-1.1s"></i><i style="--x:75%;--y:39.1%;--delay:-3.1s"></i><i style="--x:28.7%;--y:39.3%;--delay:-2.7s"></i><i style="--x:75.3%;--y:44.3%;--delay:-1.8s"></i></span>
         </div>
       </div>
     </section>
