@@ -10,7 +10,7 @@
   };
   const state = {
     view:"home", mode:null, question:"", deck:[], chosen:[], orientations:[], fanScroll:0,
-    shuffling:false, revealIndex:0, flipped:false, record:null, resultBack:"home", settingsBack:"home", toast:"", aiBusy:false
+    shuffling:false, revealIndex:0, flipped:false, record:null, resultBack:"home", settingsBack:"home", calendarMonth:null, toast:"", aiBusy:false
   };
   let shuffleTimer;
   let toastTimer;
@@ -200,17 +200,18 @@
     <button class="brand" data-action="home" aria-label="返回 LUNA 首页"><span class="brand-mark" aria-hidden="true">☾</span><span class="brand-name">LUNA</span></button>
     <nav class="header-actions${immersive?" is-immersive":""}" aria-label="主导航">${immersive
       ? `<span class="header-step">${esc(state.mode ? SPREADS[state.mode].eyebrow : "A QUIET SPACE")}</span><button class="nav-link" data-action="home">退出牌桌</button><button class="nav-link" data-action="settings">设置</button>`
-      : `<button class="nav-link" data-action="home" ${["home","modes"].includes(state.view)?'aria-current="page"':""}>首页</button><button class="nav-link" data-action="journal" ${state.view==="journal"?'aria-current="page"':""}>我的记录</button><button class="nav-link" data-action="settings" ${state.view==="settings"?'aria-current="page"':""}>设置</button>`
+      : `<button class="nav-link" data-action="home" ${["home","modes"].includes(state.view)?'aria-current="page"':""}>首页</button><button class="nav-link" data-action="calendar" ${state.view==="calendar"?'aria-current="page"':""}>占卜日历</button><button class="nav-link" data-action="journal" ${state.view==="journal"?'aria-current="page"':""}>我的记录</button><button class="nav-link" data-action="settings" ${state.view==="settings"?'aria-current="page"':""}>设置</button>`
     }</nav>
   </header>`;
   const footer = () => `<footer class="site-footer"><span>© LUNA · 给思绪一点空间</span><span>塔罗用于自我探索，不替代专业建议。</span></footer>`;
   const bottomIcon = name => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.6 10.2 5.2 4.3l4.1 2.5a8 8 0 0 1 5.4 0l4.1-2.5.6 5.9c1.1 1.2 1.7 2.8 1.7 4.4 0 4.5-3.9 7.4-9.1 7.4s-9.1-2.9-9.1-7.4c0-1.6.6-3.2 1.7-4.4Z"/>${({
     home:'<circle cx="9" cy="14.5" r=".65" fill="currentColor" stroke="none"/><circle cx="15" cy="14.5" r=".65" fill="currentColor" stroke="none"/><path d="m11 17 1 .7 1-.7m-1 .7v1.1m0 0c-.6.6-1.2.8-1.7.5m1.7-.5c.6.6 1.2.8 1.7.5"/>',
+    calendar:'<rect x="7.7" y="12.6" width="8.6" height="6.5" rx=".9"/><path d="M7.8 15h8.4m-5.8-3.5v2.1m3.2-2.1v2.1"/><circle cx="10.1" cy="17.1" r=".55" fill="currentColor" stroke="none"/>',
     journal:'<path d="M7.8 13.5c1.6-.5 3-.2 4.2.7 1.2-.9 2.6-1.2 4.2-.7v4.6c-1.6-.3-3 .1-4.2.9-1.2-.8-2.6-1.2-4.2-.9v-4.6Zm4.2.7V19"/>',
     settings:'<path d="M8 14h8m-8 4h8"/><circle cx="10" cy="14" r="1.25" fill="var(--panel)"/><circle cx="14" cy="18" r="1.25" fill="var(--panel)"/>'
   })[name]}</svg>`;
   const bottomNav = () => '<nav class="bottom-nav" aria-label="底部导航">' +
-    [["home","首页"],["journal","我的记录"],["settings","设置"]].map(([action,label]) =>
+    [["home","首页"],["calendar","占卜日历"],["journal","我的记录"],["settings","设置"]].map(([action,label]) =>
       '<button type="button" data-action="'+action+'"'+(state.view===action||(action==="home"&&state.view==="modes")?' aria-current="page"':"")+'>'+
       bottomIcon(action)+'<span>'+label+'</span></button>').join("")+'</nav>';
   const starfield = (() => {
@@ -386,7 +387,7 @@
   const settingsPage = () => {
     const ai=readAiSettings();
     return shell(`<main class="page settings-page">
-      <button class="back-link" data-action="settings-back">${arrow("left")} 返回${state.settingsBack==="result"?"阅读":state.settingsBack==="journal"?"我的记录":"首页"}</button>
+      <button class="back-link" data-action="settings-back">${arrow("left")} 返回${state.settingsBack==="result"?"阅读":state.settingsBack==="journal"?"我的记录":state.settingsBack==="calendar"?"占卜日历":"首页"}</button>
       <div class="settings-head"><p class="eyebrow">AI SETTINGS</p><h1>AI 设置</h1><p>选择解读和追问使用的 AI 服务。</p></div>
       <section class="settings-panel" aria-labelledby="provider-title"><p class="eyebrow">AI PROVIDER</p><h2 id="provider-title">解读服务</h2>
         <div class="choice-group provider-choices" role="radiogroup" aria-label="AI 服务">
@@ -416,7 +417,7 @@
     const prompts = cards.map(card=>card.question);
     const verdict = r.spread==="decision" && cards.length===3 ? decisionVerdict(cards,r) : null;
     return shell(`<main class="page result">
-      <button class="back-link result-back" data-action="result-back">${arrow("left")} 返回${state.resultBack==="journal"?"我的记录":"首页"}</button>
+      <button class="back-link result-back" data-action="result-back">${arrow("left")} 返回${state.resultBack==="journal"?"我的记录":state.resultBack==="calendar"?"占卜日历":"首页"}</button>
       <div class="result-head"><p class="eyebrow">${spread.eyebrow} · YOUR READING</p><h1>${spread.title}</h1>
         ${r.question?`<p class="result-question">“${esc(r.question)}”</p>`:""}
         <p class="result-date">${dateLabel(r.createdAt)}</p>
@@ -454,7 +455,46 @@
       :`<div class="empty-journal"><div class="glyph" aria-hidden="true">☾</div><h2>这里还没有记录。</h2><p>从一张牌开始，给今天的想法留个位置。</p><button class="primary" data-action="home">去抽一张牌 ${arrow()}</button></div>`}
     </main>`);
   };
-  const screens = {home,modes,intent,shuffle,select,ready,reveal,result,journal,settings:settingsPage};
+  const calendar = () => {
+    const monthKey=state.calendarMonth||dateKey().slice(0,7);
+    const [year,month]=monthKey.split("-").map(Number);
+    const first=new Date(year,month-1,1);
+    const leading=(first.getDay()+6)%7;
+    const days=new Date(year,month,0).getDate();
+    const cellCount=Math.ceil((leading+days)/7)*7;
+    const today=dateKey();
+    const daily=new Map();
+    records().filter(r=>r?.spread==="daily" && Array.isArray(r.cards) && r.cards.length===1 && Number.isFinite(r.createdAt))
+      .sort((a,b)=>a.createdAt-b.createdAt)
+      .forEach(r=>daily.set(dateKey(new Date(r.createdAt)),r));
+    const monthCount=Array.from(daily.keys()).filter(key=>key.startsWith(monthKey+"-")).length;
+    const daysHtml=Array.from({length:cellCount},(_,index)=>{
+      const day=index-leading+1;
+      if(day<1 || day>days) return '<div class="calendar-day is-outside" aria-hidden="true"></div>';
+      const key=dateKey(new Date(year,month-1,day));
+      const record=daily.get(key);
+      const card=record && cardById(record.cards[0]);
+      const isToday=key===today;
+      if(!card) return `<div class="calendar-day${isToday?" is-today":""}" aria-label="${year}年${month}月${day}日${isToday?"，今天":""}，没有每日一牌记录"><span class="calendar-day-number">${day}</span>${isToday?'<span class="calendar-today-label">今天</span>':""}</div>`;
+      const orientation=orientationAt(record,0);
+      return `<button type="button" class="calendar-day has-card${isToday?" is-today":""}" data-action="open-record" data-id="${esc(record.id)}" aria-label="${year}年${month}月${day}日${isToday?"，今天":""}，${esc(card.cn)}，${orientationName(orientation)}，查看解读">
+        <span class="calendar-day-number">${day}${isToday?'<span class="calendar-today-label">今天</span>':""}</span>
+        <picture class="calendar-card-art${orientation==="reversed"?" is-reversed":""}"><source srcset="${avifUrl(card.id)}" type="image/avif"><img src="${thumbUrl(card.id)}" alt="" loading="lazy" decoding="async"></picture>
+        <span class="calendar-card-name">${esc(card.cn)}</span><span class="calendar-orientation">${orientationName(orientation)}</span>
+      </button>`;
+    }).join("");
+    return shell(`<main class="page calendar-page">
+      <div class="calendar-head"><div><p class="eyebrow">YOUR DAILY CARDS</p><h1>占卜日历</h1><p>每日一牌会留在抽牌当天。点开牌面，回看那天的解读。</p></div></div>
+      <section class="calendar-panel" aria-label="${year}年${month}月占卜日历">
+        <div class="calendar-toolbar"><div><h2>${year} 年 ${String(month).padStart(2,"0")} 月</h2><span>本月 ${monthCount} 次每日一牌</span></div>
+          <div class="calendar-controls"><button type="button" data-action="calendar-today" ${monthKey===today.slice(0,7)?"disabled":""}>本月</button><button type="button" data-action="calendar-shift" data-offset="-1" aria-label="上个月">${arrow("left")}</button><button type="button" data-action="calendar-shift" data-offset="1" aria-label="下个月">${arrow("right")}</button></div></div>
+        <div class="calendar-weekdays" aria-hidden="true">${["一","二","三","四","五","六","日"].map(day=>`<span>${day}</span>`).join("")}</div>
+        <div class="calendar-grid">${daysHtml}</div>
+      </section>
+      <p class="calendar-footnote">记录保存在当前浏览器。清除浏览器数据或更换设备后，日历记录可能消失。</p>
+    </main>`);
+  };
+  const screens = {home,modes,intent,shuffle,select,ready,reveal,result,journal,calendar,settings:settingsPage};
   function render() {
     app.innerHTML = (screens[state.view]||home)();
     const oracle=app.querySelector(".hero-oracle");
@@ -488,7 +528,7 @@
     if (state.view==="select") app.querySelector(".fan").scrollLeft=state.fanScroll;
     if (state.view==="home") document.title="LUNA · 给思绪一点空间";
     else if (state.view==="modes") document.title="选择占卜方式 · LUNA";
-    else document.title=`${state.view==="journal"?"我的塔罗日志":state.view==="result"?"我的阅读":state.view==="settings"?"AI 设置":SPREADS[state.mode]?.title||"抽牌"} · LUNA`;
+    else document.title=`${state.view==="calendar"?"占卜日历":state.view==="journal"?"我的塔罗日志":state.view==="result"?"我的阅读":state.view==="settings"?"AI 设置":SPREADS[state.mode]?.title||"抽牌"} · LUNA`;
   }
   function watchArt(image) {
     if(!image) return;
@@ -519,7 +559,7 @@
   function navigate(view, replace=false) {
     clearTimeout(shuffleTimer);
     state.toast=""; state.view=view;
-    if(["home","modes","journal","settings"].includes(view)) history[replace||location.hash===`#${view}`?"replaceState":"pushState"]({view},"",`#${view}`);
+    if(["home","modes","journal","calendar","settings"].includes(view)) history[replace||location.hash===`#${view}`?"replaceState":"pushState"]({view},"",`#${view}`);
     else if(view==="result"&&state.record) history.pushState({view,id:state.record.id},"",`#reading/${encodeURIComponent(state.record.id)}`);
     window.scrollTo(0,0); render();
     if(view==="modes") app.querySelector("#modes-title")?.focus({preventScroll:true});
@@ -583,7 +623,7 @@
   function openRecord(id) {
     const found=records().find(r=>r.id===id);
     if (!found) return flash("找不到这次阅读。");
-    state.record=found;state.mode=found.spread;state.resultBack="journal";state.view="result";
+    state.record=found;state.mode=found.spread;state.resultBack=state.view==="calendar"?"calendar":"journal";state.view="result";
     history.pushState({view:"result",id},"",`#reading/${encodeURIComponent(id)}`);
     window.scrollTo(0,0);render();
   }
@@ -959,8 +999,15 @@
     if(action==="home") navigate("home",state.view==="modes");
     else if(action==="choose-spread") navigate("modes");
     else if(action==="modes-back") navigate("home",true);
+    else if(action==="calendar") navigate("calendar");
+    else if(action==="calendar-today") {state.calendarMonth=dateKey().slice(0,7);render();}
+    else if(action==="calendar-shift") {
+      const [year,month]=(state.calendarMonth||dateKey().slice(0,7)).split("-").map(Number);
+      const shifted=new Date(year,month-1+Number(button.dataset.offset),1);
+      state.calendarMonth=dateKey(shifted).slice(0,7);render();
+    }
     else if(action==="journal") navigate("journal");
-    else if(action==="settings") {state.settingsBack=["result","journal"].includes(state.view)?state.view:"home";navigate("settings");}
+    else if(action==="settings") {state.settingsBack=["result","journal","calendar"].includes(state.view)?state.view:"home";navigate("settings");}
     else if(action==="settings-back") navigate(state.settingsBack);
     else if(action==="save-settings") saveSettings();
     else if(action==="clear-api-key") {
@@ -969,7 +1016,7 @@
       if(field) {field.value="";field.placeholder="仅在你的浏览器中使用";}
       app.querySelector("#settings-status").textContent="已清除此设备保存的密钥。";
     }
-    else if(action==="result-back") navigate(state.resultBack==="journal"?"journal":"home");
+    else if(action==="result-back") navigate(["journal","calendar"].includes(state.resultBack)?state.resultBack:"home");
     else if(action==="ai-start") askAi(state.record?.question?"请结合我写的问题与本次牌面，给出具体的解读，以及我可以尝试的两三步。":"请根据这次牌面给我一个具体的解读，并告诉我可以从哪里开始思考。若需要更多背景，请向我提问。",state.record?.question||"解读这次牌面");
     else if(action==="ai-suggest") askAi(button.dataset.prompt||"");
     else if(action==="ai-send") askAi(app.querySelector("#ai-question")?.value||"");
@@ -1039,6 +1086,7 @@
   window.addEventListener("popstate",()=>{
     const hash=decodeURIComponent(location.hash);
     if(hash==="#modes") {state.view="modes";render();}
+    else if(hash==="#calendar") {state.view="calendar";render();}
     else if(hash==="#journal") {state.view="journal";render();}
     else if(hash==="#settings") {state.view="settings";render();}
     else if(hash.startsWith("#reading/")) {
@@ -1049,6 +1097,7 @@
   });
   const initial=decodeURIComponent(location.hash);
   if(initial==="#modes") state.view="modes";
+  else if(initial==="#calendar") state.view="calendar";
   else if(initial==="#journal") state.view="journal";
   else if(initial==="#settings") state.view="settings";
   else if(initial.startsWith("#reading/")) {
