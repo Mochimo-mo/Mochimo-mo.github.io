@@ -25,7 +25,8 @@
     "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
   })[c]);
   const cardById = id => CARDS.find(card => card.id === id);
-  const artUrl = id => `./assets/cards/${id}.webp?v=hd2`;
+  const isMinorCard = id => /^(wands|cups|swords|pentacles)-/.test(id);
+  const artUrl = id => isMinorCard(id) ? `./assets/cards/minor/${id}.svg?v=1` : `./assets/cards/${id}.webp?v=hd2`;
   const thumbUrl = id => `./assets/cards/thumbs/${id}.webp?v=2`;
   const avifUrl = id => `./assets/cards/thumbs/${id}.avif`;
   const arrow = (direction="up") => `<svg class="arrow-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" focusable="false">${{
@@ -57,8 +58,8 @@
     img.decoding="async";
     img.fetchPriority="high";
     img.onload=()=>{img.decode?.().catch(()=>{});};
-    img.onerror=()=>{img.onerror=null;img.src=thumbUrl(id);};
-    img.src=avifUrl(id);
+    img.onerror=()=>{img.onerror=null;if(!isMinorCard(id)) img.src=thumbUrl(id);};
+    img.src=isMinorCard(id)?artUrl(id):avifUrl(id);
     artPreloads.set(id,img);
   };
   const orientationAt = (reading, index) => reading?.orientations?.[index] === "reversed" ? "reversed" : "upright";
@@ -194,12 +195,24 @@
     return ids;
   };
   const accent = id => {
+    const suits={wands:"#e5b16f",cups:"#a1d5d1",swords:"#bed2dc",pentacles:"#dfc57e"};
+    if(isMinorCard(id)) return suits[id.split("-")[0]];
     const palette = ["#ba9b65","#a28ab2","#819db8","#b99491","#a9ab8a"];
     return palette[Math.max(0,CARDS.findIndex(c => c.id === id)) % palette.length];
   };
+  const minorPreview = card => {
+    const colors={wands:"#5e344e",cups:"#23556d",swords:"#354863",pentacles:"#345b49"};
+    const bg=colors[card.id.split("-")[0]]||"#1d2031";
+    const svg='<svg xmlns="http://www.w3.org/2000/svg" width="48" height="72" viewBox="0 0 48 72">'+
+      '<rect width="48" height="72" fill="'+bg+'"/><circle cx="36" cy="14" r="9" fill="#e5c988" opacity=".65"/>'+
+      '<path d="M13 42L14 29 20 34Q24 32 28 34L34 29 35 42Q39 55 24 57Q9 55 13 42Z" fill="#c9ad91"/>'+
+      '<circle cx="19" cy="43" r="1.6" fill="#242638"/><circle cx="29" cy="43" r="1.6" fill="#242638"/>'+
+      '<path d="M23 48h2" stroke="#342c36" stroke-width="1.5"/><rect x="2" y="2" width="44" height="68" rx="2" fill="none" stroke="#e1c18a" opacity=".75"/></svg>';
+    return "data:image/svg+xml,"+encodeURIComponent(svg);
+  };
   const face = (card, compact=false, orientation="upright") => `<div class="tarot-face ${compact?"compact":""} ${orientation==="reversed"?"is-reversed":""} ${loadedArt.has(card.id)?"was-loaded":""}" data-card-id="${card.id}" style="--accent:${accent(card.id)}" role="img" aria-label="${esc(card.en)}，${esc(card.cn)}，${orientationName(orientation)}">
-    <img class="face-preview" src="${PREVIEW_ART[card.id]}" alt="" aria-hidden="true" draggable="false">
-    <picture><source srcset="${avifUrl(card.id)}" type="image/avif"><img class="face-art" src="${thumbUrl(card.id)}" alt="" loading="eager" fetchpriority="high" decoding="async" draggable="false"></picture>
+    <img class="face-preview" src="${isMinorCard(card.id)?minorPreview(card):PREVIEW_ART[card.id]}" alt="" aria-hidden="true" draggable="false">
+    ${isMinorCard(card.id)?`<img class="face-art" src="${artUrl(card.id)}" alt="" loading="eager" fetchpriority="high" decoding="async" draggable="false">`:`<picture><source srcset="${avifUrl(card.id)}" type="image/avif"><img class="face-art" src="${thumbUrl(card.id)}" alt="" loading="eager" fetchpriority="high" decoding="async" draggable="false"></picture>`}
     <span class="face-number">${card.n}</span>
     <span class="face-caption"><span class="face-name">${esc(card.en)}</span><span class="face-cn">${esc(card.cn)}</span></span>
   </div>`;
@@ -237,7 +250,7 @@
         ${modeCard("decision","⚖","理清一个决定","看看需要、遗漏与提醒。")}
         ${modeCard("three","☾","三张牌","过去、现在，以及下一步。")}
       </div>
-      <div class="home-extra"><span>也可以不带着具体问题。</span><button class="text-link" data-action="mode" data-mode="single">自由抽一张 ${arrow("right")}</button></div>
+      <div class="home-extra"><span>78 张猫咪塔罗 · 也可以不带着具体问题。</span><button class="text-link" data-action="mode" data-mode="single">自由抽一张 ${arrow("right")}</button></div>
     </section>
   </main>`);
   const modeCard = (mode, icon, title, description) => `<button class="mode-card" data-action="mode" data-mode="${mode}">
@@ -312,7 +325,7 @@
     judgement:[1,-1],world:[1,-1]
   };
   const decisionVerdict = (cards, reading) => {
-    const values=cards.map((card,i)=>(decisionValues[card.id]?.[orientationAt(reading,i)==="reversed"?1:0]||0)*(i===2?2:1));
+    const values=cards.map((card,i)=>((decisionValues[card.id]||card.decision)?.[orientationAt(reading,i)==="reversed"?1:0]||0)*(i===2?2:1));
     const advance=values.reduce((sum,value)=>sum+value,0)>0;
     const lead=values.reduce((best,value,i)=>
       (advance?value>0:value<0) && Math.abs(value)>Math.abs(values[best]||0) ? i : best,
@@ -1030,7 +1043,7 @@
   render();
 
   if("serviceWorker" in navigator && location.protocol==="https:") {
-    navigator.serviceWorker.register("./sw.js?v=20260930-1",{scope:"./"}).catch(()=>{});
+    navigator.serviceWorker.register("./sw.js?v=20261001-1",{scope:"./"}).catch(()=>{});
   }
 
   // Optional browser agent interface; the visible controls use the same actions.

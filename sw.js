@@ -1,6 +1,6 @@
 // Bump this name when card artwork changes so old images are replaced.
-const ART_CACHE = "luna-art-20260930-1";
-const ART_PATH = /\/assets\/(?:cardback\.webp|cards\/(?:thumbs\/)?[a-z-]+\.(?:avif|webp))$/;
+const ART_CACHE = "luna-art-20261001-1";
+const ART_PATH = /\/assets\/(?:cardback\.webp|cards\/(?:(?:thumbs\/)?[a-z-]+\.(?:avif|webp)|minor\/[a-z0-9-]+\.svg))$/;
 
 self.addEventListener("install", event => {
   event.waitUntil(self.skipWaiting());

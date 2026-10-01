@@ -21,7 +21,7 @@ const CARDS = [
   {id:"sun",n:"XIX",en:"The Sun",cn:"太阳",keys:["清晰","活力","喜悦"],meaning:"太阳带来更明朗的视野与生命力。留意什么让你感到自在、坦诚，也把这份能量分享给身边的人。",question:"什么事情让我感到真正有生命力？",symbol:"☼"},
   {id:"judgement",n:"XX",en:"Judgement",cn:"审判",keys:["觉醒","回望","回应"],meaning:"回望过去并不等于困在过去。审判邀请你理解走过的路，并决定此刻如何回应内心的召唤。",question:"我已经准备好回应哪个一直存在的声音？",symbol:"✺"},
   {id:"world",n:"XXI",en:"The World",cn:"世界",keys:["完成","整合","新章"],meaning:"世界象征一个阶段的完成。看见自己如何走到这里，能够帮助你带着经验进入下一段旅程。",question:"这一段经历教会了我什么？",symbol:"◌"}
-];
+].concat(MINOR_CARDS);
 // 逆位描述强调受阻、内化或重新审视，不将它等同于坏结果。
 const REVERSED = {
   fool:{keys:["犹豫","准备","风险"],meaning:"新的开始可能让你既期待又不安。先确认自己的准备与边界，不必用一次冲动证明勇敢。"},
@@ -47,6 +47,7 @@ const REVERSED = {
   judgement:{keys:["自我评判","迟疑","接纳"],meaning:"回望过去时，你可能对自己过于严厉。理解当时的选择，再决定现在想怎样回应。"},
   world:{keys:["未完成","整合","收尾"],meaning:"一个阶段可能还欠缺最后的整理。承认已经走过的路，完成必要的收尾，才能更轻松地迈向下一章。"}
 };
+Object.assign(REVERSED, MINOR_REVERSED);
 const SPREADS = {
   daily:{title:"今日一牌",eyebrow:"DAILY RITUAL",count:1,positions:["今日主题"],intro:"今天不需要提问。抽一张牌，看看有什么值得留意。"},
   single:{title:"自由抽一张",eyebrow:"ONE CARD",count:1,positions:["此刻的提醒"],intro:"在心里想好你的问题，或者只是留意此刻的感受。"},
