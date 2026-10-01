@@ -225,7 +225,7 @@
     }).join("")}${Array.from({length:34},()=>{
       const x=(random()*100).toFixed(2);
       const trail=(20+random()*36).toFixed(0);
-      const size=(2+random()*2.5).toFixed(1);
+      const size=(7+random()*5).toFixed(1);
       const drift=((random()-.5)*48).toFixed(0);
       const duration=8+random()*6;
       const delay=-(random()*duration).toFixed(2);

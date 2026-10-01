@@ -15,8 +15,8 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
 .starfield i:nth-child(3n){background:#c7d9ff;box-shadow:0 0 8px 1px rgba(151,183,245,.52)}
 .starfield i:nth-child(13n):after{content:"";position:absolute;inset:-4px;background:linear-gradient(90deg,transparent 44%,currentColor 50%,transparent 56%),linear-gradient(transparent 44%,currentColor 50%,transparent 56%);color:rgba(246,234,216,.55)}
 .starfield .falling-star{position:absolute;left:var(--x);top:-90px;width:2px;height:var(--trail);border-radius:99px;background:linear-gradient(to bottom,transparent,rgba(202,217,255,.13) 38%,rgba(231,226,250,.45) 80%,rgba(255,246,226,.82));opacity:0;animation:star-rain var(--duration) linear infinite;animation-delay:var(--delay)}
-.starfield .falling-star:before{content:"";position:absolute;left:50%;bottom:-2px;width:var(--size);height:var(--size);transform:translateX(-50%);border-radius:50%;background:#fff8eb;box-shadow:0 0 7px 2px rgba(219,224,255,.55)}
-.starfield .falling-star:nth-of-type(5n):after{content:"";position:absolute;left:50%;bottom:-5px;width:10px;height:10px;transform:translateX(-50%);background:linear-gradient(90deg,transparent 43%,rgba(255,246,225,.85) 50%,transparent 57%),linear-gradient(transparent 43%,rgba(255,246,225,.85) 50%,transparent 57%)}
+.starfield .falling-star:before{content:"";position:absolute;left:50%;bottom:0;width:var(--size);height:var(--size);transform:translate(-50%,50%);clip-path:polygon(50% 0,62% 38%,100% 50%,62% 62%,50% 100%,38% 62%,0 50%,38% 38%);background:linear-gradient(135deg,#fff9eb,#dce4ff);filter:drop-shadow(0 0 3px rgba(225,229,255,.8))}
+.starfield .falling-star:nth-of-type(5n):before{filter:drop-shadow(0 0 5px rgba(255,240,205,.95))}
 @keyframes star-twinkle{0%,100%{opacity:.12;transform:scale(.65)}48%{opacity:.9;transform:scale(1.38)}70%{opacity:.34;transform:scale(.85)}}
 @keyframes star-rain{0%{opacity:0;transform:translate3d(0,0,0)}10%{opacity:.72}76%{opacity:.72}100%{opacity:0;transform:translate3d(var(--drift),calc(100vh + 190px),0)}}
 .app-shell > main,.app-shell > footer{position:relative;z-index:1}
