@@ -223,20 +223,15 @@
     [["home","首页"],["journal","我的记录"],["settings","设置"]].map(([action,label]) =>
       '<button type="button" data-action="'+action+'"'+(state.view===action||(action==="home"&&state.view==="modes")?' aria-current="page"':"")+'>'+
       bottomIcon(action)+'<span>'+label+'</span></button>').join("")+'</nav>';
-  const shell = (content, immersive=false) => `<div class="app-shell${immersive?" is-immersive":""}">${header(immersive)}${content}${immersive?"":(state.view==="home"?"":footer())+bottomNav()}${state.toast?`<div class="toast" role="status">${esc(state.toast)}</div>`:""}</div>`;
+  const shell = (content, immersive=false) => `<div class="app-shell${immersive?" is-immersive":""}${state.view==="home"?" is-home":""}">${header(immersive)}${content}${immersive?"":(state.view==="home"?"":footer())+bottomNav()}${state.toast?`<div class="toast" role="status">${esc(state.toast)}</div>`:""}</div>`;
   const home = () => shell(`<main class="page home-landing">
     <section class="home-stage" aria-labelledby="home-title">
+      <img class="home-scene" src="./assets/hero-cat-oracle-storybook.webp" width="1254" height="1254" alt="" loading="eager" decoding="async" fetchpriority="high">
       <div class="home-copy">
-        <p class="eyebrow">LUNA · CAT TAROT</p>
-        <h1 id="home-title">轻触水晶球，<br><em>开始占卜。</em></h1>
-        <p class="home-description" id="home-guidance">想一个问题，或者只是跟着直觉走。</p>
+        <h1 id="home-title">把心事交给月光。</h1>
+        <p class="home-description" id="home-guidance">轻触水晶球，开始占卜 <span aria-hidden="true">✦</span></p>
       </div>
-      <div class="home-art">
-        <button type="button" class="hero-figure hero-oracle" data-action="choose-spread" aria-label="轻触水晶球，选择占卜方式" aria-describedby="home-guidance">
-          <picture><source srcset="./assets/hero-cat-oracle.avif" type="image/avif"><img src="./assets/hero-cat-oracle.webp" width="1024" height="1024" alt="" loading="eager" decoding="sync" fetchpriority="high"></picture>
-          <span class="hero-crystal-light" aria-hidden="true"><span class="hero-crystal-star">✦</span></span>
-        </button>
-      </div>
+      <button type="button" class="hero-orb-trigger" data-action="choose-spread" aria-label="轻触水晶球，选择占卜方式" aria-describedby="home-guidance"><span class="visually-hidden">开始占卜</span></button>
     </section>
   </main>`);
   const modeCard = (mode, icon, count, title, description) => `<button type="button" class="mode-card" data-action="mode" data-mode="${mode}">
@@ -459,13 +454,6 @@
   const screens = {home,modes,intent,shuffle,select,ready,reveal,result,journal,settings:settingsPage};
   function render() {
     app.innerHTML = (screens[state.view]||home)();
-    const oracle=app.querySelector(".hero-oracle");
-    if(oracle) {
-      const image=oracle.querySelector("img");
-      const reveal=()=>oracle.classList.add("is-loaded");
-      image.addEventListener("load",reveal,{once:true});
-      if(image.complete && image.naturalWidth) reveal();
-    }
     app.querySelectorAll(".face-art").forEach(image => watchArt(image));
     if(state.view==="result" && state.record) {
       const id=state.record.id;
