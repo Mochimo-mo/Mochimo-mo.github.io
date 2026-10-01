@@ -5,6 +5,7 @@
   "engines": { "node": ">=24.15.0" },
   "scripts": {
     "start": "node index.mjs",
-    "test": "node --test test.mjs"
+    "test": "node --test test.mjs",
+    "catalog": "node build-catalog.mjs"
   }
 }

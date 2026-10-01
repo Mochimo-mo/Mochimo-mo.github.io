@@ -14,7 +14,8 @@
     view:"home", mode:null, question:"", deck:[], chosen:[], orientations:[], fanScroll:0,
     shuffling:false, revealIndex:0, flipped:false, record:null, resultBack:"home", settingsBack:"home", accountBack:"modes", authMode:"register", authPrompt:false, completing:false, calendarMonth:null, toast:"", aiBusy:false
   };
-  const auth = {available:false, account:null, wallet:null, dailyDone:false, checking:true, busy:false};
+  const auth = {available:false, account:null, wallet:null, dailyDone:false, dailyRecord:null,
+    records:[],nextCursor:null,calendarRecords:new Map(),serverDate:"",checking:true,busy:false,serverError:false};
   let shuffleTimer;
   let toastTimer;
   const artPreloads = new Map();
@@ -149,21 +150,23 @@
   };
   const saveCrystalWallet = wallet => writeStore(CRYSTALS_KEY,wallet);
   const claimDailyCrystal = () => {
-    if(auth.account) return false;
+    if(auth.available || auth.checking || auth.serverError) return false;
     const wallet=crystalWallet();
     if(wallet.claimedDate===dateKey()) return false;
     const next={...wallet,claimedDate:dateKey(),balance:Math.min(CRYSTAL_MAX,wallet.balance+1)};
     return saveCrystalWallet(next) && next.balance>wallet.balance;
   };
-  const activeWallet = () => auth.account ? auth.wallet : crystalWallet();
+  const activeWallet = () => auth.available ? (auth.wallet||{balance:0}) : auth.checking||auth.serverError?{balance:0}:crystalWallet();
   const recordKey = () => auth.account ? `${RECORDS_KEY}:${auth.account.id}` : RECORDS_KEY;
   const dailyKey = () => auth.account ? `${DAILY_KEY}:${auth.account.id}` : DAILY_KEY;
-  const accountRequest = async (path,body) => {
+  const accountRequest = async (path,body,method=body===undefined?"GET":"POST") => {
     const response=await fetch(`./api/${path}`,{
-      method:body===undefined?"GET":"POST",credentials:"same-origin",cache:"no-store",
+      method,credentials:"same-origin",cache:"no-store",
       ...(body===undefined?{}:{headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})
     });
-    if(!response.headers.get("Content-Type")?.includes("application/json")) throw new Error("账户服务暂不可用，请稍后再试。");
+    if(!response.headers.get("Content-Type")?.includes("application/json")) {
+      const error=new Error("账户服务暂不可用，请稍后再试。");error.staticSite=response.status===404;throw error;
+    }
     const data=await response.json();
     if(!response.ok) {const error=new Error(data.error||"账户服务暂不可用，请稍后再试。");error.status=response.status;throw error;}
     return data;
@@ -172,21 +175,70 @@
     auth.account=data.account||null;
     auth.wallet=data.wallet||null;
     auth.dailyDone=!!data.dailyDone;
+    auth.dailyRecord=data.dailyRecord||null;
+    auth.records=Array.isArray(data.readings)?data.readings:[];
+    auth.nextCursor=data.nextCursor||null;
+    auth.calendarRecords.clear();
+    auth.serverDate=data.serverDate||dateKey();
     auth.available=true;
+    auth.serverError=false;
     render();
+  };
+  const cacheRecord = record => {
+    const index=auth.records.findIndex(item=>item.id===record.id);
+    if(index>=0) auth.records[index]=record;else auth.records.unshift(record);
+    if(record.spread==="daily" && auth.serverDate===record.day) auth.dailyRecord=record;
+    for(const items of auth.calendarRecords.values()) {
+      const i=items.findIndex(item=>item.id===record.id);
+      if(i>=0) items[i]=record;
+    }
+    if(state.record?.id===record.id) state.record=record;
+  };
+  const findRecord = id => records().find(r=>r.id===id)||
+    [...auth.calendarRecords.values()].flat().find(r=>r.id===id);
+  const fetchRecord = async id => {
+    const found=findRecord(id);
+    if(found||!auth.available) return found;
+    const result=await accountRequest(`readings/${encodeURIComponent(id)}`);
+    cacheRecord(result.record);
+    return result.record;
+  };
+  const loadCalendar = async () => {
+    if(!auth.available) return;
+    const month=state.calendarMonth||auth.serverDate.slice(0,7);
+    if(auth.calendarRecords.has(month)) return;
+    try {
+      const result=await accountRequest(`calendar?month=${month}`);
+      auth.calendarRecords.set(month,result.readings);
+      if(state.view==="calendar" && (state.calendarMonth||auth.serverDate.slice(0,7))===month) render();
+    } catch(error) {flash(error.message||"日历暂时无法加载。");}
   };
   const loadAccount = async () => {
     try {
-      const data=await accountRequest("session");
+      const data=await accountRequest("bootstrap");
       setAccount(data);
       const hash=decodeURIComponent(location.hash);
-      if(data.account && hash.startsWith("#reading/")) {
-        const found=records().find(r=>r.id===hash.slice(9));
+      if(hash.startsWith("#reading/")) {
+        const found=await fetchRecord(hash.slice(9)).catch(()=>null);
         if(found) {state.record=found;state.mode=found.spread;state.resultBack="home";state.view="result";render();}
+        else {state.record=null;state.view="home";render();}
       }
+      if(state.view==="calendar") loadCalendar();
       if(data.granted) flash("今日获得 1 颗灵感水晶。");
-    } catch { auth.available=false; }
-    finally { auth.checking=false; }
+    } catch(error) {
+      auth.available=false;
+      auth.serverError=!error.staticSite;
+      if(!auth.serverError) {
+        auth.checking=false;
+        const hash=decodeURIComponent(location.hash);
+        if(hash.startsWith("#reading/")) {
+          const found=records().find(record=>record.id===hash.slice(9));
+          if(found) {state.record=found;state.mode=found.spread;state.view="result";}
+        }
+        const granted=claimDailyCrystal();render();if(granted) flash("今日获得 1 颗灵感水晶。");
+      }
+      else flash("账户服务暂不可用，请稍后刷新网页。",4200);
+    } finally { auth.checking=false; }
   };
   const readAiSettings = () => {
     const saved=readStore(AI_SETTINGS_KEY,{});
@@ -217,6 +269,8 @@
     localStorage.removeItem(`${API_KEY_STORE}-modelscope`);
   } catch {}
   const records = () => {
+    if(auth.available) return auth.records;
+    if(auth.checking||auth.serverError) return [];
     const value = readStore(recordKey(), []);
     return Array.isArray(value) ? value : [];
   };
@@ -311,9 +365,9 @@
     <span class="mode-copy"><strong>${title}</strong><small>${description}</small><span class="mode-cost">${mode==="daily"?"今日免费":"✧ 消耗 1 颗水晶"}</span></span><span class="mode-arrow">${arrow("right")}</span>
   </button>`;
   const modes = () => {
-    const saved=readStore(dailyKey(),null);
-    const localDaily=saved?.date===dateKey() && records().some(r=>r.id===saved.id);
-    const dailyDone=(auth.account&&auth.dailyDone) || localDaily;
+    const saved=auth.available?null:readStore(dailyKey(),null);
+    const localDaily=auth.available?!!auth.dailyRecord:saved?.date===dateKey() && records().some(r=>r.id===saved.id);
+    const dailyDone=auth.available?auth.dailyDone:localDaily;
     const wallet=activeWallet();
     return shell(`<main class="page modes-page">
       <button type="button" class="back-link modes-back" data-action="modes-back">${arrow("left")} 返回水晶球</button>
@@ -322,15 +376,15 @@
         <h1 id="modes-title" tabindex="-1">今天想怎样抽牌？</h1>
         <p>跟着直觉选一种方式。问题可以稍后再写，也可以留空。</p>
       </section>
-      <div class="crystal-wallet" role="status" aria-live="polite"><svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="M8 5.5h16L29 14 16 27 3 14 8 5.5Z"/><path d="M3 14h26M8 5.5 13 14l3 13 3-13 5-8.5"/></svg><div><strong>灵感水晶 <span>${wallet.balance}/${CRYSTAL_MAX}</span></strong><p>${auth.account?"已登录 · 余额保存在账号":"游客 · 余额保存在当前浏览器"}。每天首次打开 +1；今日一牌免费，其他占卜每次 1 颗。</p></div></div>
+      <div class="crystal-wallet" role="status" aria-live="polite"><svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="M8 5.5h16L29 14 16 27 3 14 8 5.5Z"/><path d="M3 14h26M8 5.5 13 14l3 13 3-13 5-8.5"/></svg><div><strong>灵感水晶 <span>${wallet.balance}/${CRYSTAL_MAX}</span></strong><p>${auth.account?"已登录 · 余额保存在账号":auth.available?"游客 · 余额保存在此设备的服务器会话":"游客 · 余额保存在当前浏览器"}。每天首次打开 +1；今日一牌免费，其他占卜每次 1 颗。</p></div></div>
       ${auth.available?`<div class="modes-account"><button type="button" class="text-link" data-action="account" data-auth-mode="login">${auth.account?`账户 · ${esc(auth.account.email)}`:"已有账号？登录"}</button></div>`:""}
       <div class="mode-grid" role="group" aria-label="占卜方式">
-        ${modeCard("daily","☼","每日 · 1 张","今日一牌",localDaily?"今天已抽过，点此回看。":dailyDone?"今天已在其他设备完成。":"给今天一个观察自己的角度。")}
+        ${modeCard("daily","☼","每日 · 1 张","今日一牌",dailyDone?"今天已抽过，点此回看。":"给今天一个观察自己的角度。")}
         ${modeCard("decision","⚖","决定 · 3 张","理清一个决定","看看需要、遗漏与提醒。")}
         ${modeCard("three","☾","时序 · 3 张","三张牌","过去、现在，以及下一步。")}
         ${modeCard("single","✦","自由 · 1 张","自由抽一张","带着问题，或只是凭直觉。")}
       </div>
-      <p class="modes-note">完成新占卜有 20% 概率掉落 1 颗，每天最多 1 颗 · ${auth.account?"水晶保存在账号；阅读记录仍在本机":"游客水晶保存在当前浏览器"}</p>
+      <p class="modes-note">完成新占卜有 20% 概率掉落 1 颗，每天最多 1 颗 · ${auth.available?"水晶与阅读由服务器保存":"游客记录保存在当前浏览器"}</p>
     </main>`);
   };
   const intent = () => {
@@ -347,7 +401,7 @@
           <textarea id="question" maxlength="180" placeholder="${decision?"例如：我要不要接受这份新工作？":"例如：最近这件事为什么让我犹豫？"}">${esc(state.question)}</textarea>
         </div>
         <button class="primary" data-action="prepare">准备好了 ${arrow()}</button>
-        <p class="small-note">${decision?"填写的内容仅显示在本次阅读和当前浏览器的记录里，不会改变抽牌结果。":"你写下的问题仅显示在本次阅读和当前浏览器的记录里，不会改变抽牌结果。"}</p>
+        <p class="small-note">问题会保存在${auth.available?"阅读记录中；登录后可跨设备查看":"当前浏览器的记录中"}，不会改变抽牌结果。</p>
       </section>
     </main>`,true);
   };
@@ -480,15 +534,15 @@
   const accountPage = () => shell(`<main class="page account-page">
     <button class="back-link" data-action="account-back">${arrow("left")} 返回${state.accountBack==="settings"?"设置":"占卜方式"}</button>
     <div class="account-card"><p class="eyebrow">YOUR CRYSTALS</p>
-      ${auth.account?`<h1>欢迎回来</h1><p class="account-lead">${esc(auth.account.email)}</p><div class="account-balance">✧ ${auth.wallet.balance}/${CRYSTAL_MAX} 颗灵感水晶</div><p class="account-hint">余额保存在账号，可在其他设备登录后继续使用。抽牌记录和笔记暂时只保存在这台设备的浏览器。</p><button class="secondary" data-action="logout" ${auth.busy?"disabled":""}>退出登录</button>`:
-        !auth.available?`<h1>先以游客身份探索</h1><p class="account-lead">账号服务尚未启用。服务器部署完成后即可注册和登录。</p>`:
-        `<h1>${state.authMode==="register"?"领取 2 颗水晶":"登录 LUNA"}</h1><p class="account-lead">${state.authPrompt&&state.authMode==="register"?"游客水晶用完啦。注册后立即获得 2 颗，今日一牌仍可免费抽。":state.authMode==="register"?"注册后立即获得 2 颗灵感水晶。":"回到你的账户，继续使用账号里的水晶。"}</p>
+      ${auth.account?`<h1>欢迎回来</h1><p class="account-lead">${esc(auth.account.email)}</p><div class="account-balance">✧ ${auth.wallet.balance}/${CRYSTAL_MAX} 颗灵感水晶</div><p class="account-hint">水晶、抽牌记录、笔记和日历保存在账号，其他设备登录后也能查看。</p><button class="secondary" data-action="logout" ${auth.busy?"disabled":""}>退出登录</button>`:
+        !auth.available?`<h1>${auth.serverError?"暂时无法连接":"先以游客身份探索"}</h1><p class="account-lead">${auth.serverError?"账户服务暂不可用，请稍后刷新网页。":"账号服务尚未启用。服务器部署完成后即可注册和登录。"}</p>`:
+        `<h1>${state.authMode==="register"?"领取 2 颗水晶":"登录 LUNA"}</h1><p class="account-lead">${state.authPrompt&&state.authMode==="register"?"游客水晶用完啦。注册可额外获得最多 2 颗，今日一牌仍可免费抽。":state.authMode==="register"?"注册后额外获得 2 颗灵感水晶，上限 5 颗。":"回到你的账户，继续使用账号里的水晶与阅读记录。"}</p>
         <div class="auth-switch" role="group" aria-label="账户方式"><button type="button" data-action="auth-tab" data-auth-mode="register" aria-pressed="${state.authMode==="register"}">注册</button><button type="button" data-action="auth-tab" data-auth-mode="login" aria-pressed="${state.authMode==="login"}">登录</button></div>
         <form id="account-form"><label for="account-email">邮箱</label><input id="account-email" name="email" type="email" autocomplete="email" maxlength="254" required placeholder="you@example.com">
           <label for="account-password">密码</label><input id="account-password" name="password" type="password" autocomplete="${state.authMode==="register"?"new-password":"current-password"}" minlength="12" maxlength="128" required placeholder="至少 12 位">
           ${state.authMode==="register"?'<label for="account-confirm">确认密码</label><input id="account-confirm" name="confirm" type="password" autocomplete="new-password" minlength="12" maxlength="128" required placeholder="再次输入密码">':""}
           <button class="primary" type="submit" ${auth.busy?"disabled":""}>${auth.busy?"正在处理…":state.authMode==="register"?"注册并领取 2 颗":"登录"}</button><p id="account-status" role="status" aria-live="polite"></p>
-        </form><p class="account-hint">注册赠礼每个账号仅一次。账号水晶由服务器记录；阅读和笔记仍只保存在当前浏览器。请妥善保存密码，暂未提供邮件找回。</p>`}
+        </form><p class="account-hint">注册赠礼每个账号仅一次。游客在此设备的服务器记录会随注册保存到账号；登录既有账号也会合并游客记录。请妥善保存密码，暂未提供邮件找回。</p>`}
     </div></main>`);
   const result = () => {
     const r = state.record;
@@ -524,7 +578,7 @@
           <textarea id="journal-note" maxlength="5000" placeholder="我注意到……">${esc(r.note||"")}</textarea>
           <div class="result-actions"><button class="primary" data-action="save-note">保存记录</button><button class="secondary" data-action="share">保存图文卡片</button><button class="secondary" data-action="copy-reading">复制解读文字</button><button class="secondary" data-action="journal">查看我的记录</button></div>
           <p class="save-feedback" id="reading-save-status" role="status" aria-live="polite"></p>
-          <p class="small-note" style="margin:0">记录保存在当前浏览器。手机保存图文卡片时，请在系统分享菜单里选择“存储图像”或“保存到照片”；不支持分享的浏览器会下载图片。</p>
+          <p class="small-note" style="margin:0">记录保存在${auth.available?"服务器":"当前浏览器"}。手机保存图文卡片时，请在系统分享菜单里选择“存储图像”或“保存到照片”；不支持分享的浏览器会下载图片。</p>
         </section>
       </div>
       <dialog class="card-dialog" id="card-dialog" aria-label="卡牌大图"><button class="dialog-close" data-action="close-card" aria-label="关闭大图">×</button><div id="dialog-content"></div></dialog>
@@ -534,23 +588,25 @@
     const list = records().filter(r=>r && SPREADS[r.spread] && Array.isArray(r.cards)).sort((a,b)=>b.createdAt-a.createdAt);
     return shell(`<main class="page journal-page">
       <div class="journal-head"><p class="eyebrow">YOUR JOURNAL</p><h1>我的塔罗日志</h1><p>回看抽过的牌，也回看当时的自己。</p></div>
-      <div class="storage-note">阅读和笔记保存在当前浏览器中。清除浏览器数据或更换设备后，它们可能消失。</div>
+      <div class="storage-note">${auth.account?"阅读和笔记已同步到账号。":auth.available?"游客记录保存在服务器会话；注册后可跨设备查看，请勿清除浏览器会话。":"阅读和笔记保存在当前浏览器中。清除浏览器数据或更换设备后，它们可能消失。"}</div>
+      <div class="journal-actions"><button class="secondary" data-action="export-records">导出记录 JSON</button>${auth.available&&auth.account?'<button class="secondary" data-action="import-local-records">导入此设备旧记录</button><button class="secondary" data-action="import-file">从旧站点导入 JSON</button><input type="file" id="import-records-file" accept="application/json,.json" hidden>':""}</div>
       ${list.length?`<div class="journal-list">${list.map(r=>{const d=new Date(r.createdAt);return `<button class="journal-item" data-action="open-record" data-id="${esc(r.id)}"><span class="journal-date">${d.getDate()}<small>${d.getMonth()+1} 月</small></span><span class="journal-item-main"><strong>${esc(r.question||SPREADS[r.spread].title)}</strong><span>${esc(SPREADS[r.spread].title)} · ${r.cards.map((id,i)=>esc((cardById(id)?.cn||"")+"（"+orientationName(orientationAt(r,i))+"）")).join(" · ")}${r.note?" · 已记录想法":""}</span></span><span class="journal-item-arrow">${arrow()}</span></button>`}).join("")}</div>`
       :`<div class="empty-journal"><div class="glyph" aria-hidden="true">☾</div><h2>这里还没有记录。</h2><p>从一张牌开始，给今天的想法留个位置。</p><button class="primary" data-action="home">去抽一张牌 ${arrow()}</button></div>`}
+      ${auth.available&&auth.nextCursor?'<button class="secondary journal-more" data-action="more-records">加载更早记录</button>':""}
     </main>`);
   };
   const calendar = () => {
-    const monthKey=state.calendarMonth||dateKey().slice(0,7);
+    const today=auth.available?auth.serverDate:dateKey();
+    const monthKey=state.calendarMonth||today.slice(0,7);
     const [year,month]=monthKey.split("-").map(Number);
     const first=new Date(year,month-1,1);
     const leading=(first.getDay()+6)%7;
     const days=new Date(year,month,0).getDate();
     const cellCount=Math.ceil((leading+days)/7)*7;
-    const today=dateKey();
     const daily=new Map();
-    records().filter(r=>r?.spread==="daily" && Array.isArray(r.cards) && r.cards.length===1 && Number.isFinite(r.createdAt))
+    (auth.available?(auth.calendarRecords.get(monthKey)||records()):records()).filter(r=>r?.spread==="daily" && Array.isArray(r.cards) && r.cards.length===1 && Number.isFinite(r.createdAt))
       .sort((a,b)=>a.createdAt-b.createdAt)
-      .forEach(r=>daily.set(dateKey(new Date(r.createdAt)),r));
+      .forEach(r=>daily.set(auth.available?r.day:dateKey(new Date(r.createdAt)),r));
     const monthCount=Array.from(daily.keys()).filter(key=>key.startsWith(monthKey+"-")).length;
     const daysHtml=Array.from({length:cellCount},(_,index)=>{
       const day=index-leading+1;
@@ -575,7 +631,7 @@
         <div class="calendar-weekdays" aria-hidden="true">${["一","二","三","四","五","六","日"].map(day=>`<span>${day}</span>`).join("")}</div>
         <div class="calendar-grid">${daysHtml}</div>
       </section>
-      <p class="calendar-footnote">记录保存在当前浏览器。清除浏览器数据或更换设备后，日历记录可能消失。</p>
+      <p class="calendar-footnote">${auth.available?"每日一牌由服务器保存；登录后可在其他设备回看。":"记录保存在当前浏览器。清除浏览器数据或更换设备后，日历记录可能消失。"}</p>
     </main>`);
   };
   const screens = {home,modes,intent,shuffle,select,ready,reveal,result,journal,calendar,settings:settingsPage,account:accountPage};
@@ -647,17 +703,19 @@
     if(["home","modes","journal","calendar","settings","account"].includes(view)) history[replace||location.hash===`#${view}`?"replaceState":"pushState"]({view},"",`#${view}`);
     else if(view==="result"&&state.record) history.pushState({view,id:state.record.id},"",`#reading/${encodeURIComponent(state.record.id)}`);
     window.scrollTo(0,0); render();
+    if(view==="calendar") loadCalendar();
     if(view==="modes") app.querySelector("#modes-title")?.focus({preventScroll:true});
     if(claimed) flash("今日获得 1 颗灵感水晶。");
   }
   function persist(record) {
+    if(auth.available) {cacheRecord(record);return true;}
     const list=records();
     const i=list.findIndex(item=>item.id===record.id);
     if(i>=0) list[i]=record; else list.unshift(record);
     return writeStore(recordKey(),list.slice(0,100));
   }
   function settleCrystalDrop(record) {
-    if(auth.account || !record?.crystalDropEligible || record.crystalDropChecked || record.crystalServerSettled) return false;
+    if(auth.available || !record?.crystalDropEligible || record.crystalDropChecked || record.crystalServerSettled) return false;
     const wallet=crystalWallet();
     if(wallet.checkedIds.includes(record.id)) {
       record.crystalDropChecked=true;
@@ -684,14 +742,21 @@
   }
   function startMode(mode) {
     if (!SPREADS[mode]) return false;
+    if(auth.checking || auth.serverError) {flash("正在连接账户服务，请稍后重试。");return false;}
     const claimed=claimDailyCrystal();
     if (mode==="daily") {
-      const saved=readStore(dailyKey(),null);
+      if(auth.available && auth.dailyDone) {
+        if(auth.dailyRecord) {
+          state.mode="daily";state.record=auth.dailyRecord;state.resultBack="home";state.view="result";
+          window.scrollTo(0,0);render();return true;
+        }
+        flash("今天的每日一牌已经完成，可以从日历回看。");return false;
+      }
+      const saved=auth.available?null:readStore(dailyKey(),null);
       if (saved?.date===dateKey()) {
         const found=records().find(r=>r.id===saved.id);
         if (found) {const dropped=settleCrystalDrop(found);state.mode="daily";state.record=found;state.resultBack="home";state.view="result";window.scrollTo(0,0);render();if(dropped) flash(`水晶掉落！+1 · 现在有 ${activeWallet().balance}/${CRYSTAL_MAX} 颗。`);else if(claimed) flash("今日获得 1 颗灵感水晶。");return true;}
       }
-      if(auth.account && auth.dailyDone) {flash("今天的每日一牌已在其他设备完成，记录暂留在原设备。");return false;}
     }
     if(mode!=="daily" && activeWallet().balance<1) {
       if(auth.available && !auth.account) {state.accountBack="modes";state.authMode="register";state.authPrompt=true;navigate("account");}
@@ -719,7 +784,7 @@
     if(navigator.vibrate) navigator.vibrate(8);
     if(state.chosen.length===SPREADS[state.mode].count) {
       state.view="ready";
-      if(state.mode==="daily" && !auth.account) {
+      if(state.mode==="daily" && !auth.available) {
         const r=buildRecord();
         if(persist(r)) writeStore(dailyKey(),{date:dateKey(),id:r.id});
       }
@@ -730,32 +795,27 @@
   async function showResult() {
     if(state.completing) return;
     const r=buildRecord();
-    if(auth.account) {
+    if(auth.available) {
       const button=app.querySelector('[data-action="reveal-next"]');
       const label=button?.innerHTML;
       state.completing=true;
       if(button) {button.disabled=true;button.textContent="正在保存这次占卜…";}
       try {
-        if(!writeStore(recordKey(),records())) throw new Error("浏览器无法保存记录，请检查存储设置。");
-        const result=await accountRequest("readings",{id:r.id,spread:r.spread});
+        const result=await accountRequest("readings",{id:r.id,spread:r.spread,question:r.question,cards:r.cards,orientations:r.orientations});
         auth.wallet=result.wallet;
-        if(r.spread==="daily") {auth.dailyDone=true;writeStore(dailyKey(),{date:dateKey(),id:r.id});}
-        r.crystalSpent=result.spent;
-        r.crystalRewarded=result.rewarded;
-        r.crystalDropChecked=true;
-        r.crystalServerSettled=true;
-        r.accountId=auth.account.id;
-        const localSaved=persist(r);
+        auth.dailyDone=result.dailyDone;
+        auth.serverDate=result.serverDate;
+        cacheRecord(result.record);
+        state.record=result.record;
         state.resultBack="home";state.view="result";
         history.pushState({view:"result",id:r.id},"",`#reading/${encodeURIComponent(r.id)}`);
         window.scrollTo(0,0);render();
-        if(!localSaved) flash("占卜已完成，但这台设备未能保存记录。请检查浏览器存储设置。",4200);
-        else if(result.rewarded) flash(`${result.spent?"本次消耗 1 颗 · ":""}水晶掉落 +1 · 现在有 ${result.wallet.balance}/${CRYSTAL_MAX} 颗。`);
-        else if(result.spent) flash(`本次消耗 1 颗水晶 · 剩余 ${result.wallet.balance}/${CRYSTAL_MAX} 颗。`);
+        if(result.record.crystalRewarded) flash(`${result.record.crystalSpent?"本次消耗 1 颗 · ":""}水晶掉落 +1 · 现在有 ${result.wallet.balance}/${CRYSTAL_MAX} 颗。`);
+        else if(result.record.crystalSpent) flash(`本次消耗 1 颗水晶 · 剩余 ${result.wallet.balance}/${CRYSTAL_MAX} 颗。`);
       } catch(error) {
         flash(error.message||"占卜暂时无法保存，请稍后重试。",4200);
-        if(error.status===402) accountRequest("session").then(setAccount).catch(()=>{});
-        if(error.status===401) loadAccount().then(()=>{state.accountBack="modes";state.authMode="login";navigate("account");});
+        if(error.status===402) accountRequest("bootstrap").then(setAccount).catch(()=>{});
+        if(error.status===401) loadAccount();
       } finally {
         state.completing=false;
         if(button?.isConnected) {button.disabled=false;button.innerHTML=label;}
@@ -785,8 +845,9 @@
     else if(dropped) flash(`${charged?"本次消耗 1 颗 · ":""}水晶掉落 +1 · 现在有 ${activeWallet().balance}/${CRYSTAL_MAX} 颗。`);
     else if(charged) flash(`本次消耗 1 颗水晶 · 剩余 ${activeWallet().balance}/${CRYSTAL_MAX} 颗。`);
   }
-  function openRecord(id) {
-    const found=records().find(r=>r.id===id);
+  async function openRecord(id) {
+    let found;
+    try {found=await fetchRecord(id);} catch(error) {return flash(error.message||"找不到这次阅读。");}
     if (!found) return flash("找不到这次阅读。");
     const dropped=settleCrystalDrop(found);
     state.record=found;state.mode=found.spread;state.resultBack=state.view==="calendar"?"calendar":"journal";state.view="result";
@@ -1014,17 +1075,17 @@
   };
   const callAi = async (reading,prompt,onDelta) => {
     const settings=readAiSettings();
-    const messages=aiRequestMessages(reading,prompt);
     const siteProvided=settings.provider==="zhipu";
+    const messages=siteProvided&&auth.available?null:aiRequestMessages(reading,prompt);
     const key=siteProvided?"":storedApiKey("custom");
-    const endpoint=siteProvided?SITE_AI_ENDPOINT:settings.endpoint;
+    const endpoint=siteProvided?(auth.available?"./api/ai":SITE_AI_ENDPOINT):settings.endpoint;
     if(!siteProvided&&(!endpoint||!settings.model)) throw new Error("请先在设置中填写接口 URL 和模型名称。");
     const controller=new AbortController();
     const timeout=setTimeout(()=>controller.abort(),60000);
     try {
       const response=await fetch(endpoint,{
         method:"POST",headers:{"Content-Type":"application/json",...(siteProvided?{Accept:"text/event-stream"}:{}),...(key?{Authorization:`Bearer ${key}`}:{})},
-        body:JSON.stringify(siteProvided?{messages}:{model:settings.model,messages,temperature:0.6,max_tokens:800,stream:false}),
+        body:JSON.stringify(siteProvided?(auth.available?{readingId:reading.id,prompt}:{messages}):{model:settings.model,messages,temperature:0.6,max_tokens:800,stream:false}),
         signal:controller.signal
       });
       if(!response.ok) {
@@ -1086,8 +1147,11 @@
         if(status) status.textContent="AI 正在逐段回答…";
       });
       if(!answer) throw new Error("AI 未返回文字");
-      reading.aiChat=[...aiMessages(reading),{role:"user",content:visibleQuestion},{role:"assistant",content:answer}].slice(-24);
-      persist(reading);
+      const chat=[...aiMessages(reading),{role:"user",content:visibleQuestion},{role:"assistant",content:answer}].slice(-24);
+      if(auth.available) {
+        const saved=await accountRequest(`readings/${encodeURIComponent(reading.id)}`,{aiChat:chat},"PATCH");
+        cacheRecord(saved.record);
+      } else {reading.aiChat=chat;persist(reading);}
       if(active()) {
         userMessage.removeAttribute("data-ai-pending");
         aiMessage.removeAttribute("data-ai-pending");
@@ -1154,7 +1218,7 @@
       setAccount(data);
       state.authPrompt=false;
       navigate("modes",true);
-      flash(mode==="register"?"注册成功，已获得 2 颗灵感水晶。":data.granted?"登录成功，今日获得 1 颗灵感水晶。":"登录成功，欢迎回来。");
+      flash(mode==="register"?`注册成功，额外获得 ${data.bonusGranted} 颗灵感水晶。`:data.granted?"登录成功，今日获得 1 颗灵感水晶。":"登录成功，欢迎回来。");
     } catch(error) {
       if(status) status.textContent=error.message||"账户服务暂不可用，请稍后再试。";
       if(button.isConnected) {button.disabled=false;button.textContent=mode==="register"?"注册并领取 2 颗":"登录";}
@@ -1164,12 +1228,43 @@
     if(auth.busy) return;
     auth.busy=true;
     try {
-      await accountRequest("logout",{});
-      setAccount({account:null,wallet:null});
+      const data=await accountRequest("logout",{});
+      setAccount(data);
       navigate("modes",true);
       flash("已退出登录，当前为游客模式。");
     } catch(error) {flash(error.message||"退出失败，请稍后重试。");}
     finally {auth.busy=false;}
+  }
+  async function exportRecords() {
+    try {
+      const list=[...records()];
+      if(auth.available) {
+        let cursor=auth.nextCursor;
+        while(cursor) {
+          const page=await accountRequest(`readings?before=${encodeURIComponent(cursor)}`);
+          list.push(...page.readings);cursor=page.nextCursor;
+        }
+      }
+      const unique=[...new Map(list.map(record=>[record.id,record])).values()];
+      const data=new Blob([JSON.stringify({format:"luna-readings-v1",exportedAt:new Date().toISOString(),readings:unique},null,2)],{type:"application/json"});
+      downloadImage(data,`LUNA-records-${dateKey()}.json`);
+      flash(`已导出 ${unique.length} 条记录。`);
+    } catch(error) {flash(error.message||"记录导出失败，请稍后重试。");}
+  }
+  async function importRecords(list) {
+    if(!auth.account) return flash("请先注册或登录，再导入旧记录。");
+    if(!Array.isArray(list)||!list.length) return flash("没有找到可导入的记录。");
+    if(list.length>2000) return flash("记录超过导入上限，请分批整理。");
+    try {
+      let imported=0,skipped=0;
+      for(let i=0;i<list.length;i+=20) {
+        const result=await accountRequest("import",{readings:list.slice(i,i+20)});
+        imported+=result.imported;skipped+=result.skipped;
+      }
+      setAccount(await accountRequest("bootstrap"));
+      navigate("journal",true);
+      flash(`已导入 ${imported} 条旧记录${skipped?`，跳过 ${skipped} 条重复记录`:""}。`,4600);
+    } catch(error) {flash(error.message||"导入失败，请检查文件后重试。",5000);}
   }
   app.addEventListener("submit",event=>{
     if(event.target.id==="account-form") {event.preventDefault();submitAccount(event.target);}
@@ -1178,6 +1273,17 @@
     if(event.target.id==="question") state.question=event.target.value;
   });
   app.addEventListener("change",event=>{
+    if(event.target.id==="import-records-file") {
+      const file=event.target.files?.[0];
+      if(!file) return;
+      if(file.size>5000000) return flash("文件过大，请分批导入。",4000);
+      file.text().then(text=>{
+        const data=JSON.parse(text);
+        return importRecords(data.readings);
+      }).catch(()=>flash("JSON 文件格式无效，请检查导出文件。"));
+      event.target.value="";
+      return;
+    }
     if(event.target.name==="ai-provider") {
       const provider=event.target.value;
       app.querySelector("#custom-api").hidden=provider!=="custom";
@@ -1201,13 +1307,27 @@
     else if(action==="choose-spread") navigate("modes");
     else if(action==="modes-back") navigate("home",true);
     else if(action==="calendar") navigate("calendar");
-    else if(action==="calendar-today") {state.calendarMonth=dateKey().slice(0,7);render();}
+    else if(action==="calendar-today") {state.calendarMonth=(auth.available?auth.serverDate:dateKey()).slice(0,7);render();loadCalendar();}
     else if(action==="calendar-shift") {
-      const [year,month]=(state.calendarMonth||dateKey().slice(0,7)).split("-").map(Number);
+      const [year,month]=(state.calendarMonth||(auth.available?auth.serverDate:dateKey()).slice(0,7)).split("-").map(Number);
       const shifted=new Date(year,month-1+Number(button.dataset.offset),1);
-      state.calendarMonth=dateKey(shifted).slice(0,7);render();
+      state.calendarMonth=dateKey(shifted).slice(0,7);render();loadCalendar();
     }
     else if(action==="journal") navigate("journal");
+    else if(action==="export-records") exportRecords();
+    else if(action==="import-local-records") {
+      const general=readStore(RECORDS_KEY,[]),specific=readStore(`${RECORDS_KEY}:${auth.account?.id}`,[]);
+      const older=[...(Array.isArray(general)?general:[]),...(Array.isArray(specific)?specific:[])];
+      importRecords([...new Map(older.filter(r=>r?.id).map(r=>[r.id,r])).values()]);
+    }
+    else if(action==="import-file") app.querySelector("#import-records-file")?.click();
+    else if(action==="more-records" && auth.available && auth.nextCursor) {
+      button.disabled=true;
+      accountRequest(`readings?before=${encodeURIComponent(auth.nextCursor)}`).then(data=>{
+        for(const record of data.readings) if(!auth.records.some(item=>item.id===record.id)) auth.records.push(record);
+        auth.nextCursor=data.nextCursor;render();
+      }).catch(error=>{flash(error.message||"加载失败，请重试。");button.disabled=false;});
+    }
     else if(action==="settings") {state.settingsBack=["result","journal","calendar"].includes(state.view)?state.view:"home";navigate("settings");}
     else if(action==="settings-back") navigate(state.settingsBack);
     else if(action==="account") {state.accountBack=state.view==="settings"?"settings":"modes";state.authMode=button.dataset.authMode||"register";state.authPrompt=false;navigate("account");}
@@ -1282,8 +1402,13 @@
     }
     else if(action==="save-note") {
       if(!state.record) return;
-      state.record.note=app.querySelector("#journal-note")?.value||"";
-      flash(persist(state.record)?"已保存在当前浏览器。":"保存失败，请检查浏览器存储设置。");
+      const id=state.record.id,note=app.querySelector("#journal-note")?.value||"";
+      if(auth.available) {
+        button.disabled=true;
+        accountRequest(`readings/${encodeURIComponent(id)}`,{note},"PATCH").then(data=>{
+          cacheRecord(data.record);flash("✓ 笔记已保存到服务器。");
+        }).catch(error=>flash(error.message||"笔记保存失败，请重试。",4200)).finally(()=>{if(button.isConnected) button.disabled=false;});
+      } else {state.record.note=note;flash(persist(state.record)?"已保存在当前浏览器。":"保存失败，请检查浏览器存储设置。");}
     }
     else if(action==="share") shareReading();
     else if(action==="copy-reading") copyReading();
@@ -1291,14 +1416,15 @@
   window.addEventListener("popstate",()=>{
     const hash=decodeURIComponent(location.hash);
     if(hash==="#modes") {const claimed=claimDailyCrystal();state.view="modes";render();if(claimed) flash("今日获得 1 颗灵感水晶。");}
-    else if(hash==="#calendar") {state.view="calendar";render();}
+    else if(hash==="#calendar") {state.view="calendar";render();loadCalendar();}
     else if(hash==="#journal") {state.view="journal";render();}
     else if(hash==="#settings") {state.view="settings";render();}
     else if(hash==="#account") {state.view="account";render();}
     else if(hash.startsWith("#reading/")) {
-      const found=records().find(r=>r.id===hash.slice(9));
-      if(found){state.record=found;state.mode=found.spread;state.resultBack="home";state.view="result";render();}
-      else {state.view="home";render();}
+      fetchRecord(hash.slice(9)).then(found=>{
+        if(found){state.record=found;state.mode=found.spread;state.resultBack="home";state.view="result";render();}
+        else {state.view="home";render();}
+      }).catch(()=>{state.view="home";render();});
     } else {state.view="home";render();}
   });
   const initial=decodeURIComponent(location.hash);
@@ -1307,13 +1433,7 @@
   else if(initial==="#journal") state.view="journal";
   else if(initial==="#settings") state.view="settings";
   else if(initial==="#account") state.view="account";
-  else if(initial.startsWith("#reading/")) {
-    const found=records().find(r=>r.id===initial.slice(9));
-    if(found){state.record=found;state.mode=found.spread;state.resultBack="home";state.view="result";}
-  }
-  const claimedOnLoad=claimDailyCrystal();
   render();
-  if(claimedOnLoad) flash("今日获得 1 颗灵感水晶。");
   loadAccount();
 
   if("serviceWorker" in navigator && location.protocol==="https:") {

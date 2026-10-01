@@ -264,6 +264,7 @@ h1,h2,h3,p{margin-top:0}
 .journal-head h1{margin-bottom:5px}
 .journal-head p{color:var(--muted);margin:0}
 .storage-note{background:rgba(21,23,42,.9);border:1px solid var(--line);color:var(--muted);font-size:14px;line-height:1.7;padding:14px 18px;border-radius:4px;margin:24px 0 34px}
+.journal-actions{display:flex;flex-wrap:wrap;gap:10px;margin:-16px 0 28px}.journal-actions .secondary,.journal-more{min-height:42px;padding:8px 15px;font-size:12px}.journal-more{margin-top:24px}
 .journal-list{display:grid;grid-template-columns:minmax(0,1fr);gap:12px;min-width:0}
 .journal-item{width:100%;max-width:100%;min-width:0;display:flex;align-items:center;gap:22px;text-align:left;background:var(--panel);border:1px solid var(--line);color:var(--ivory);padding:15px 20px;border-radius:4px;overflow:hidden;transition:border-color .2s ease,transform .2s ease}
 .journal-item:hover{border-color:var(--gold);transform:translateY(-2px)}

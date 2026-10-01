@@ -6,6 +6,7 @@ After=network.target
 Type=simple
 User=luna
 Group=luna
+UMask=0077
 WorkingDirectory=/opt/luna
 EnvironmentFile=/etc/luna/luna.env
 ExecStart=/usr/bin/node /opt/luna/server/index.mjs
