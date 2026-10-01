@@ -210,7 +210,7 @@
     <button class="brand" data-action="home" aria-label="返回 LUNA 首页"><span class="brand-mark" aria-hidden="true">☾</span><span class="brand-name">LUNA</span></button>
     <nav class="header-actions${immersive?" is-immersive":""}" aria-label="主导航">${immersive
       ? `<span class="header-step">${esc(state.mode ? SPREADS[state.mode].eyebrow : "A QUIET SPACE")}</span><button class="nav-link" data-action="home">退出牌桌</button><button class="nav-link" data-action="settings">设置</button>`
-      : `<button class="nav-link" data-action="home" ${state.view==="home"?'aria-current="page"':""}>首页</button><button class="nav-link" data-action="journal" ${state.view==="journal"?'aria-current="page"':""}>我的记录</button><button class="nav-link" data-action="settings" ${state.view==="settings"?'aria-current="page"':""}>设置</button>`
+      : `<button class="nav-link" data-action="home" ${["home","modes"].includes(state.view)?'aria-current="page"':""}>首页</button><button class="nav-link" data-action="journal" ${state.view==="journal"?'aria-current="page"':""}>我的记录</button><button class="nav-link" data-action="settings" ${state.view==="settings"?'aria-current="page"':""}>设置</button>`
     }</nav>
   </header>`;
   const footer = () => `<footer class="site-footer"><span>© LUNA · 给思绪一点空间</span><span>塔罗用于自我探索，不替代专业建议。</span></footer>`;
@@ -221,44 +221,56 @@
   })[name];
   const bottomNav = () => '<nav class="bottom-nav" aria-label="底部导航">' +
     [["home","首页"],["journal","我的记录"],["settings","设置"]].map(([action,label]) =>
-      '<button type="button" data-action="'+action+'"'+(state.view===action?' aria-current="page"':"")+'>'+
+      '<button type="button" data-action="'+action+'"'+(state.view===action||(action==="home"&&state.view==="modes")?' aria-current="page"':"")+'>'+
       bottomIcon(action)+'<span>'+label+'</span></button>').join("")+'</nav>';
   const shell = (content, immersive=false) => `<div class="app-shell${immersive?" is-immersive":""}">${header(immersive)}${content}${immersive?"":footer()+bottomNav()}${state.toast?`<div class="toast" role="status">${esc(state.toast)}</div>`:""}</div>`;
-  const home = () => shell(`<main class="page home">
-    <section class="hero" aria-labelledby="home-title">
-      <div class="hero-copy">
-        <p class="eyebrow">A SPACE TO REFLECT</p>
-        <h1 id="home-title">有些问题，<br>不需要马上<br><em>找到答案。</em></h1>
-        <p class="hero-text">选一种方式抽牌。看看此刻的感受，在阅读中为自己的想法留一点空间。</p>
+  const home = () => shell(`<main class="page home-landing">
+    <section class="home-stage" aria-labelledby="home-title">
+      <div class="home-copy">
+        <p class="eyebrow">LUNA · CAT TAROT</p>
+        <h1 id="home-title">给此刻的心事，<br><em>一点星光。</em></h1>
+        <p class="home-description">想一件正在挂念的事，或者什么也不想。<br>轻触水晶球，开始一次猫咪塔罗阅读。</p>
       </div>
-      <div class="hero-art" aria-hidden="true">
-        <span class="hero-orbit one">✧</span><span class="hero-orbit two">✦</span><span class="hero-orbit three">✧</span>
-        <div class="hero-figure">
+      <div class="home-art">
+        <button type="button" class="hero-figure hero-oracle" data-action="choose-spread" aria-label="轻触水晶球，选择占卜方式" aria-describedby="orb-hint">
           <picture><source srcset="./assets/hero-cat-oracle.avif" type="image/avif"><img src="./assets/hero-cat-oracle.webp" width="1024" height="1024" alt="" decoding="async" fetchpriority="high"></picture>
-          <span class="hero-crystal-light"><span class="hero-crystal-star">✦</span></span>
-          <span class="hero-magic one">✦</span><span class="hero-magic two">✧</span><span class="hero-magic three">✦</span><span class="hero-magic four">✧</span>
-        </div>
+          <span class="hero-crystal-light" aria-hidden="true"><span class="hero-crystal-star">✦</span></span>
+        </button>
       </div>
-    </section>
-    <section aria-labelledby="choose-title">
-      <div class="section-heading"><span>01 / THE TABLE</span><h2 id="choose-title">今天，你想从哪里开始？</h2></div>
-      <div class="mode-grid">
-        ${modeCard("daily","☼","今日一牌","给今天一个观察自己的角度。")}
-        ${modeCard("decision","⚖","理清一个决定","看看需要、遗漏与提醒。")}
-        ${modeCard("three","☾","三张牌","过去、现在，以及下一步。")}
+      <div class="home-entry">
+        <button type="button" class="home-start" data-action="choose-spread"><span>开始占卜</span>${arrow("right")}</button>
+        <p id="orb-hint">轻触水晶球 · 选择适合此刻的抽牌方式</p>
       </div>
-      <div class="home-extra"><span>78 张猫咪塔罗 · 也可以不带着具体问题。</span><button class="text-link" data-action="mode" data-mode="single">自由抽一张 ${arrow("right")}</button></div>
     </section>
   </main>`);
-  const modeCard = (mode, icon, title, description) => `<button class="mode-card" data-action="mode" data-mode="${mode}">
-    <span class="mode-icon" aria-hidden="true">${icon}</span><span class="mode-arrow">${arrow()}</span>
-    <span class="mode-copy"><strong>${title}</strong><small>${description}</small></span>
+  const modeCard = (mode, icon, count, title, description) => `<button type="button" class="mode-card" data-action="mode" data-mode="${mode}">
+    <span class="mode-card-top"><span class="mode-icon" aria-hidden="true">${icon}</span><span class="mode-count">${count}</span></span>
+    <span class="mode-copy"><strong>${title}</strong><small>${description}</small></span><span class="mode-arrow">${arrow("right")}</span>
   </button>`;
+  const modes = () => {
+    const saved=readStore(DAILY_KEY,null);
+    const dailyDone=saved?.date===dateKey() && records().some(r=>r.id===saved.id);
+    return shell(`<main class="page modes-page">
+      <button type="button" class="back-link modes-back" data-action="modes-back">${arrow("left")} 返回水晶球</button>
+      <section class="modes-intro" aria-labelledby="modes-title">
+        <p class="eyebrow">CHOOSE YOUR READING</p>
+        <h1 id="modes-title" tabindex="-1">今天想怎样抽牌？</h1>
+        <p>跟着直觉选一种方式。问题可以稍后再写，也可以留空。</p>
+      </section>
+      <div class="mode-grid" role="group" aria-label="占卜方式">
+        ${modeCard("daily","☼","每日 · 1 张","今日一牌",dailyDone?"今天已抽过，点此回看。":"给今天一个观察自己的角度。")}
+        ${modeCard("decision","⚖","决定 · 3 张","理清一个决定","看看需要、遗漏与提醒。")}
+        ${modeCard("three","☾","时序 · 3 张","三张牌","过去、现在，以及下一步。")}
+        ${modeCard("single","✦","自由 · 1 张","自由抽一张","带着问题，或只是凭直觉。")}
+      </div>
+      <p class="modes-note">78 张猫咪塔罗 · 阅读仅供自我探索</p>
+    </main>`);
+  };
   const intent = () => {
     const spread = SPREADS[state.mode];
     const decision = state.mode==="decision";
     return shell(`<main class="journey">
-      <button class="back-link" data-action="home">${arrow("left")} 返回首页</button>
+      <button class="back-link" data-action="choose-spread">${arrow("left")} 更换占卜方式</button>
       <section class="stage-center">
         <p class="eyebrow">${spread.eyebrow}</p>
         <div class="intent-icon" aria-hidden="true">${decision?"⚖":"☾"}</div>
@@ -275,7 +287,7 @@
   const shuffle = () => {
     const spread = SPREADS[state.mode];
     return shell(`<main class="journey">
-      <button class="back-link" data-action="home">${arrow("left")} 返回首页</button>
+      <button class="back-link" data-action="choose-spread">${arrow("left")} 更换占卜方式</button>
       <section class="stage-center">
         <p class="eyebrow">${spread.eyebrow}</p>
         <h1>${state.shuffling?"让思绪慢下来。":"让牌先安静下来。"}</h1>
@@ -289,13 +301,13 @@
   const select = () => {
     const count = SPREADS[state.mode].count;
     return shell(`<main class="journey">
-      <button class="back-link" data-action="home">${arrow("left")} 返回首页</button>
+      <button class="back-link" data-action="choose-spread">${arrow("left")} 更换占卜方式</button>
       <div class="selection-head"><p class="progress-count">选择 ${state.chosen.length+1} / ${count}</p><h1>凭直觉选择。</h1><p>左右滑动牌组，轻触一张。每张牌可能是正位或逆位。</p></div>
       <div class="fan-wrap"><div class="fan" role="group" aria-label="可选择的牌背">${state.deck.slice(0,18).map((id,i)=>`<button class="fan-card" style="--tilt:${(i-8.5)*.75}deg;--z:${i+1}" data-action="choose" data-index="${i}" aria-label="选择第 ${i+1} 张牌" ${state.chosen.includes(id)?"disabled":""}></button>`).join("")}</div></div>
       ${slots()}<p class="selection-tip">所有牌选好后才会翻开。</p>
     </main>`,true);
   };
-  const ready = () => shell(`<main class="journey"><button class="back-link" data-action="home">${arrow("left")} 返回首页</button>
+  const ready = () => shell(`<main class="journey"><button class="back-link" data-action="choose-spread">${arrow("left")} 更换占卜方式</button>
     <section class="stage-center"><p class="eyebrow">THE CARDS ARE READY</p><h1>你的牌已经准备好了。</h1><p class="lead">先不要急着赋予它们答案。慢慢翻开，留意第一感觉。</p>
       <div class="deck-stage" aria-hidden="true"><div class="deck-card"></div><div class="deck-card"></div><div class="deck-card"></div></div>
       ${slots()}<button class="primary" data-action="reveal-start">翻开第一张 ${arrow()}</button>
@@ -305,7 +317,7 @@
     const card = cardById(state.chosen[state.revealIndex]);
     const orientation = state.orientations[state.revealIndex];
     const position = SPREADS[state.mode].positions[state.revealIndex];
-    return shell(`<main class="journey"><button class="back-link" data-action="home">${arrow("left")} 返回首页</button>
+    return shell(`<main class="journey"><button class="back-link" data-action="choose-spread">${arrow("left")} 更换占卜方式</button>
       <section class="stage-center"><p class="eyebrow">${state.revealIndex+1} / ${state.chosen.length} · ${esc(position)}</p>
         <div class="single-card ${state.flipped?"flipped":""}"><div class="card-rotor"><div class="card-side back"></div><div class="card-side front">${face(card,false,orientation)}</div></div></div>
         <div id="reveal-details" aria-live="polite">${state.flipped?revealedDetails(card,orientation)
@@ -448,7 +460,7 @@
       :`<div class="empty-journal"><div class="glyph" aria-hidden="true">☾</div><h2>这里还没有记录。</h2><p>从一张牌开始，给今天的想法留个位置。</p><button class="primary" data-action="home">去抽一张牌 ${arrow()}</button></div>`}
     </main>`);
   };
-  const screens = {home,intent,shuffle,select,ready,reveal,result,journal,settings:settingsPage};
+  const screens = {home,modes,intent,shuffle,select,ready,reveal,result,journal,settings:settingsPage};
   function render() {
     app.innerHTML = (screens[state.view]||home)();
     app.querySelectorAll(".face-art").forEach(image => watchArt(image));
@@ -474,6 +486,7 @@
     }
     if (state.view==="select") app.querySelector(".fan").scrollLeft=state.fanScroll;
     if (state.view==="home") document.title="LUNA · 给思绪一点空间";
+    else if (state.view==="modes") document.title="选择占卜方式 · LUNA";
     else document.title=`${state.view==="journal"?"我的塔罗日志":state.view==="result"?"我的阅读":state.view==="settings"?"偏好与 AI":SPREADS[state.mode]?.title||"抽牌"} · LUNA`;
   }
   function watchArt(image) {
@@ -502,12 +515,13 @@
     clearTimeout(toastTimer);
     toastTimer=setTimeout(()=>{state.toast="";app.querySelector(".toast")?.remove();},duration);
   }
-  function navigate(view) {
+  function navigate(view, replace=false) {
     clearTimeout(shuffleTimer);
     state.toast=""; state.view=view;
-    if(view==="home"||view==="journal"||view==="settings") history.pushState({view},"",`#${view}`);
+    if(["home","modes","journal","settings"].includes(view)) history[replace||location.hash===`#${view}`?"replaceState":"pushState"]({view},"",`#${view}`);
     else if(view==="result"&&state.record) history.pushState({view,id:state.record.id},"",`#reading/${encodeURIComponent(state.record.id)}`);
     window.scrollTo(0,0); render();
+    if(view==="modes") app.querySelector("#modes-title")?.focus({preventScroll:true});
   }
   function persist(record) {
     const list=records();
@@ -942,7 +956,9 @@
     const button=event.target.closest("[data-action]");
     if(!button) return;
     const action=button.dataset.action;
-    if(action==="home") navigate("home");
+    if(action==="home") navigate("home",state.view==="modes");
+    else if(action==="choose-spread") navigate("modes");
+    else if(action==="modes-back") navigate("home",true);
     else if(action==="journal") navigate("journal");
     else if(action==="settings") {state.settingsBack=["result","journal"].includes(state.view)?state.view:"home";navigate("settings");}
     else if(action==="settings-back") navigate(state.settingsBack);
@@ -1022,7 +1038,8 @@
   });
   window.addEventListener("popstate",()=>{
     const hash=decodeURIComponent(location.hash);
-    if(hash==="#journal") {state.view="journal";render();}
+    if(hash==="#modes") {state.view="modes";render();}
+    else if(hash==="#journal") {state.view="journal";render();}
     else if(hash==="#settings") {state.view="settings";render();}
     else if(hash.startsWith("#reading/")) {
       const found=records().find(r=>r.id===hash.slice(9));
@@ -1031,7 +1048,8 @@
     } else {state.view="home";render();}
   });
   const initial=decodeURIComponent(location.hash);
-  if(initial==="#journal") state.view="journal";
+  if(initial==="#modes") state.view="modes";
+  else if(initial==="#journal") state.view="journal";
   else if(initial==="#settings") state.view="settings";
   else if(initial.startsWith("#reading/")) {
     const found=records().find(r=>r.id===initial.slice(9));
