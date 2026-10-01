@@ -221,7 +221,11 @@
       const size=i%13===0?3.5:i%5===0?2.3:1.4;
       const duration=(2.8+random()*4.6).toFixed(2), delay=(random()*7).toFixed(2);
       return `<i style="--x:${x}%;--y:${y}%;--size:${size}px;--duration:${duration}s;--delay:-${delay}s"></i>`;
-    }).join("")}</div>`;
+    }).join("")}${[
+      ["91%","9%","170px","11s","-2s"],
+      ["76%","20%","130px","14s","-8s"],
+      ["105%","-4%","150px","18s","-13s"]
+    ].map(([x,y,length,duration,delay])=>`<span class="meteor" style="--x:${x};--y:${y};--length:${length};--duration:${duration};--delay:${delay}"></span>`).join("")}</div>`;
   })();
   const shell = (content, immersive=false) => `<div class="app-shell${immersive?" is-immersive":""}">${starfield}${header(immersive)}${content}${immersive?"":(state.view==="home"?"":footer())+bottomNav()}${state.toast?`<div class="toast" role="status">${esc(state.toast)}</div>`:""}</div>`;
   const home = () => shell(`<main class="page home-landing">
