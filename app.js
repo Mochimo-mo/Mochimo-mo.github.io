@@ -223,23 +223,19 @@
     [["home","首页"],["journal","我的记录"],["settings","设置"]].map(([action,label]) =>
       '<button type="button" data-action="'+action+'"'+(state.view===action||(action==="home"&&state.view==="modes")?' aria-current="page"':"")+'>'+
       bottomIcon(action)+'<span>'+label+'</span></button>').join("")+'</nav>';
-  const shell = (content, immersive=false) => `<div class="app-shell${immersive?" is-immersive":""}">${header(immersive)}${content}${immersive?"":footer()+bottomNav()}${state.toast?`<div class="toast" role="status">${esc(state.toast)}</div>`:""}</div>`;
+  const shell = (content, immersive=false) => `<div class="app-shell${immersive?" is-immersive":""}">${header(immersive)}${content}${immersive?"":(state.view==="home"?"":footer())+bottomNav()}${state.toast?`<div class="toast" role="status">${esc(state.toast)}</div>`:""}</div>`;
   const home = () => shell(`<main class="page home-landing">
     <section class="home-stage" aria-labelledby="home-title">
       <div class="home-copy">
         <p class="eyebrow">LUNA · CAT TAROT</p>
-        <h1 id="home-title">给此刻的心事，<br><em>一点星光。</em></h1>
-        <p class="home-description">想一件正在挂念的事，或者什么也不想。<br>轻触水晶球，开始一次猫咪塔罗阅读。</p>
+        <h1 id="home-title">轻触水晶球，<br><em>开始占卜。</em></h1>
+        <p class="home-description" id="home-guidance">想一个问题，或者只是跟着直觉走。</p>
       </div>
       <div class="home-art">
-        <button type="button" class="hero-figure hero-oracle" data-action="choose-spread" aria-label="轻触水晶球，选择占卜方式" aria-describedby="orb-hint">
+        <button type="button" class="hero-figure hero-oracle" data-action="choose-spread" aria-label="轻触水晶球，选择占卜方式" aria-describedby="home-guidance">
           <picture><source srcset="./assets/hero-cat-oracle.avif" type="image/avif"><img src="./assets/hero-cat-oracle.webp" width="1024" height="1024" alt="" loading="eager" decoding="sync" fetchpriority="high"></picture>
           <span class="hero-crystal-light" aria-hidden="true"><span class="hero-crystal-star">✦</span></span>
         </button>
-      </div>
-      <div class="home-entry">
-        <button type="button" class="home-start" data-action="choose-spread"><span>开始占卜</span>${arrow("right")}</button>
-        <p id="orb-hint">轻触水晶球 · 选择适合此刻的抽牌方式</p>
       </div>
     </section>
   </main>`);
