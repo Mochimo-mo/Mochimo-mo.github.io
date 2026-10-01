@@ -204,11 +204,11 @@
     }</nav>
   </header>`;
   const footer = () => `<footer class="site-footer"><span>© LUNA · 给思绪一点空间</span><span>塔罗用于自我探索，不替代专业建议。</span></footer>`;
-  const bottomIcon = name => ({
-    home:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"/></svg>',
-    journal:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 3v18m4-13h5m-5 4h5"/></svg>',
-    settings:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M4 17h16M9 4v6m6 4v6"/><circle cx="9" cy="7" r="2" fill="var(--panel)"/><circle cx="15" cy="17" r="2" fill="var(--panel)"/></svg>'
-  })[name];
+  const bottomIcon = name => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.6 10.2 5.2 4.3l4.1 2.5a8 8 0 0 1 5.4 0l4.1-2.5.6 5.9c1.1 1.2 1.7 2.8 1.7 4.4 0 4.5-3.9 7.4-9.1 7.4s-9.1-2.9-9.1-7.4c0-1.6.6-3.2 1.7-4.4Z"/>${({
+    home:'<circle cx="9" cy="14.5" r=".65" fill="currentColor" stroke="none"/><circle cx="15" cy="14.5" r=".65" fill="currentColor" stroke="none"/><path d="m11 17 1 .7 1-.7m-1 .7v1.1m0 0c-.6.6-1.2.8-1.7.5m1.7-.5c.6.6 1.2.8 1.7.5"/>',
+    journal:'<path d="M7.8 13.5c1.6-.5 3-.2 4.2.7 1.2-.9 2.6-1.2 4.2-.7v4.6c-1.6-.3-3 .1-4.2.9-1.2-.8-2.6-1.2-4.2-.9v-4.6Zm4.2.7V19"/>',
+    settings:'<path d="M8 14h8m-8 4h8"/><circle cx="10" cy="14" r="1.25" fill="var(--panel)"/><circle cx="14" cy="18" r="1.25" fill="var(--panel)"/>'
+  })[name]}</svg>`;
   const bottomNav = () => '<nav class="bottom-nav" aria-label="底部导航">' +
     [["home","首页"],["journal","我的记录"],["settings","设置"]].map(([action,label]) =>
       '<button type="button" data-action="'+action+'"'+(state.view===action||(action==="home"&&state.view==="modes")?' aria-current="page"':"")+'>'+
