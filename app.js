@@ -233,7 +233,7 @@
       </div>
       <div class="home-art">
         <button type="button" class="hero-figure hero-oracle" data-action="choose-spread" aria-label="轻触水晶球，选择占卜方式" aria-describedby="orb-hint">
-          <picture><source srcset="./assets/hero-cat-oracle.avif" type="image/avif"><img src="./assets/hero-cat-oracle.webp" width="1024" height="1024" alt="" decoding="async" fetchpriority="high"></picture>
+          <picture><source srcset="./assets/hero-cat-oracle.avif" type="image/avif"><img src="./assets/hero-cat-oracle.webp" width="1024" height="1024" alt="" loading="eager" decoding="sync" fetchpriority="high"></picture>
           <span class="hero-crystal-light" aria-hidden="true"><span class="hero-crystal-star">✦</span></span>
         </button>
       </div>
@@ -463,6 +463,13 @@
   const screens = {home,modes,intent,shuffle,select,ready,reveal,result,journal,settings:settingsPage};
   function render() {
     app.innerHTML = (screens[state.view]||home)();
+    const oracle=app.querySelector(".hero-oracle");
+    if(oracle) {
+      const image=oracle.querySelector("img");
+      const reveal=()=>oracle.classList.add("is-loaded");
+      image.addEventListener("load",reveal,{once:true});
+      if(image.complete && image.naturalWidth) reveal();
+    }
     app.querySelectorAll(".face-art").forEach(image => watchArt(image));
     if(state.view==="result" && state.record) {
       const id=state.record.id;
