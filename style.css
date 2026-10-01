@@ -37,6 +37,7 @@ h1,h2,h3,p{margin-top:0}
 .hero-crystal-light{position:absolute;left:56%;top:55%;width:32%;aspect-ratio:1;border-radius:50%;overflow:hidden;pointer-events:none;mix-blend-mode:screen;background:radial-gradient(circle at 37% 30%,rgba(255,253,222,.35),transparent 40%),radial-gradient(circle at 68% 70%,rgba(110,174,255,.3),transparent 65%);border:1px solid rgba(255,239,187,.7);box-shadow:0 0 15px 4px rgba(255,220,137,.5),0 0 42px 12px rgba(93,151,238,.38),inset 0 0 17px rgba(255,245,210,.58);animation:crystal-breathe 3.5s ease-in-out infinite}
 .hero-crystal-light:before{content:"";position:absolute;inset:-35%;background:conic-gradient(from 20deg,transparent 0 13%,rgba(168,209,255,.46) 17%,transparent 26% 49%,rgba(255,231,159,.52) 56%,transparent 63% 100%);animation:crystal-turn 7s linear infinite}
 .hero-crystal-light:after{content:"";position:absolute;top:-25%;left:-75%;width:42%;height:155%;transform:rotate(25deg);background:linear-gradient(90deg,transparent,rgba(255,255,255,.72),transparent);filter:blur(5px);animation:crystal-sweep 3.4s ease-in-out infinite}
+.hero-crystal-star{position:absolute;left:50%;top:50%;color:#fff2bd;font:48px/1 var(--serif);text-shadow:0 0 9px #fff,0 0 22px #ffe6a0,0 0 38px #a9cfff;animation:crystal-star-pulse 2.4s ease-in-out infinite}
 .hero-magic{position:absolute;color:#f4d889;font:24px/1 var(--serif);text-shadow:0 0 12px #fff8d0,0 0 24px #9fbff9;pointer-events:none;animation:magic-rise 3.8s ease-in-out infinite}
 .hero-magic.one{left:34%;top:43%}.hero-magic.two{left:77%;top:43%;font-size:18px;animation-delay:.8s}.hero-magic.three{left:37%;top:70%;font-size:15px;animation-delay:1.7s}.hero-magic.four{left:79%;top:69%;font-size:20px;animation-delay:2.5s}
 .hero-orbit{position:absolute;color:var(--gold);font:24px var(--serif);z-index:2;pointer-events:none;animation:hero-twinkle 4s ease-in-out infinite}
@@ -46,6 +47,7 @@ h1,h2,h3,p{margin-top:0}
 @keyframes crystal-breathe{0%,100%{opacity:.7;transform:translate(-50%,-50%) scale(.96)}50%{opacity:1;transform:translate(-50%,-50%) scale(1.08)}}
 @keyframes crystal-turn{to{transform:rotate(360deg)}}
 @keyframes crystal-sweep{0%,18%{left:-75%;opacity:0}38%{opacity:.85}64%{left:132%;opacity:.6}70%,100%{left:132%;opacity:0}}
+@keyframes crystal-star-pulse{0%,100%{opacity:.25;transform:translate(-50%,-50%) scale(.65) rotate(0)}50%{opacity:1;transform:translate(-50%,-50%) scale(1.35) rotate(18deg)}}
 @keyframes magic-rise{0%{opacity:0;transform:translateY(12px) scale(.5) rotate(0)}25%{opacity:1}75%{opacity:.9}100%{opacity:0;transform:translateY(-26px) scale(1.25) rotate(40deg)}}
 .section-heading{display:flex;align-items:baseline;gap:24px;border-top:1px solid var(--line);padding:28px 0 22px}
 .section-heading h2{font:400 clamp(24px,3vw,34px)/1.25 var(--serif);margin:0}
@@ -250,7 +252,7 @@ h1,h2,h3,p{margin-top:0}
   .bottom-nav button:active{color:var(--ivory)}
   .toast{bottom:calc(84px + env(safe-area-inset-bottom, 0px));max-width:calc(100vw - 32px);text-align:center}
   .home{padding:35px 0 45px}.hero{grid-template-columns:1fr;gap:16px;min-height:0}.hero h1{font-size:clamp(37px,8vw,53px);max-width:520px;margin-bottom:15px}.hero-text{font-size:15px}
-  .hero-art{height:330px;grid-row:1;justify-content:center}.hero-art:before{width:285px;height:285px}.hero-art:after{width:340px;height:340px}.hero-figure{width:min(315px,100%)}.hero-orbit{font-size:16px}.hero-magic{font-size:19px}
+  .hero-art{height:330px;grid-row:1;justify-content:center}.hero-art:before{width:285px;height:285px}.hero-art:after{width:340px;height:340px}.hero-figure{width:min(315px,100%)}.hero-orbit{font-size:16px}.hero-magic{font-size:19px}.hero-crystal-star{font-size:32px}
   .section-heading{margin-top:38px;padding:22px 0 18px}.mode-grid{grid-template-columns:1fr;gap:10px}.mode-card{min-height:110px;padding:17px 18px;grid-template-columns:38px minmax(0,1fr) 24px;grid-template-rows:1fr;gap:10px;align-items:center}.mode-icon{font-size:28px}.mode-arrow{grid-column:3;grid-row:1}.mode-copy{grid-column:2;grid-row:1}.mode-card strong{font-size:22px;margin:0 0 3px}.mode-card small{font-size:13px}
   .home-extra{padding:19px 0}.site-footer{display:block;text-align:center;line-height:1.8}
   .journey{padding-top:18px}.stage-center{padding:24px 0}.stage-center h1{font-size:clamp(34px,9vw,49px)}.stage-center .lead{font-size:15px}.deck-stage{height:285px}.deck-card{width:150px}

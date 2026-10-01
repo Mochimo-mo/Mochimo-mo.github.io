@@ -235,7 +235,7 @@
         <span class="hero-orbit one">✧</span><span class="hero-orbit two">✦</span><span class="hero-orbit three">✧</span>
         <div class="hero-figure">
           <picture><source srcset="./assets/hero-cat-oracle.avif" type="image/avif"><img src="./assets/hero-cat-oracle.webp" width="1024" height="1024" alt="" decoding="async" fetchpriority="high"></picture>
-          <span class="hero-crystal-light"></span>
+          <span class="hero-crystal-light"><span class="hero-crystal-star">✦</span></span>
           <span class="hero-magic one">✦</span><span class="hero-magic two">✧</span><span class="hero-magic three">✦</span><span class="hero-magic four">✧</span>
         </div>
       </div>
